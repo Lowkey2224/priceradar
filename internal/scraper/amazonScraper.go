@@ -3,7 +3,6 @@ package scraper
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	urlpkg "net/url"
 	"regexp"
@@ -38,7 +37,7 @@ func (s AmazonScraper) fetchPrices(url string) (integers, decimals string, err e
 	res, err := fetchHTML(url)
 
 	if err != nil {
-		log.Fatal(err)
+		return "", "", err
 	}
 	defer res.Body.Close()
 	//TODO Fetch content of html element with some xpath selector
@@ -50,7 +49,7 @@ func (s AmazonScraper) fetchPrices(url string) (integers, decimals string, err e
 	// Load the HTML document
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
-		log.Fatal(err)
+		return "", "", err
 	}
 
 	whole := doc.Find(".a-price-whole").First()
