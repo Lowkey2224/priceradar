@@ -1,0 +1,57 @@
+name: Go QA & Testing
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  qa-and-test:
+    name: Code Quality & Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Repository auschecken
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Go-Umgebung aufsetzen & Caching aktivieren
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      # 3. Code-Formatierung prüfen (gofmt)
+      - name: Check Formatting (gofmt)
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Folgende Dateien entsprechen nicht dem gofmt-Standard:"
+            gofmt -l .
+            exit 1
+          fi
+
+      # 4. Statische Code-Analyse mit den Standard-Tools (go vet)
+      - name: Run go vet
+        run: go vet ./...
+
+      # 5. Professionelles Linting (golangci-lint)
+      - name: Run golangci-lint
+        uses: golangci-lint/golangci-lint-action@v6
+        with:
+          version: v1.60
+
+      # 6. Sicherheitsprüfungen auf bekannte Lücken (govulncheck)
+      - name: Run Security Scan (govulncheck)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      # 7. Tests mit Race-Detector und Coverage-Report ausführen
+      - name: Run Tests with Race Detector & Coverage
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      # 8. Testabdeckung im Pipeline-Log anzeigen
+      - name: Display Test Coverage
+        run: go tool cover -func=coverage.out
