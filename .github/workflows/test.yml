@@ -11,48 +11,197 @@ jobs:
     name: Code Quality & Tests
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      checks: write # Benötigt für golangci-lint Annotations im PR
+      contents: read # Minimale Berechtigung für maximale Sicherheit
 
     steps:
       # 1. Repository auschecken
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       # 2. Go-Umgebung aufsetzen & Caching aktivieren
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
         with:
           go-version-file: 'go.mod'
           cache: true
 
+      # Ab hier laufen alle QA-Schritte per continue-on-error immer vollständig
+      # durch, damit ein früher Fehlschlag die späteren Checks nicht verdeckt.
+      # Rot wird der Job am Ende über den Schritt "QA Gate & Report".
+
       # 3. Code-Formatierung prüfen (gofmt)
       - name: Check Formatting (gofmt)
+        id: gofmt
+        continue-on-error: true
         run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "Folgende Dateien entsprechen nicht dem gofmt-Standard:"
-            gofmt -l .
-            exit 1
+          unformatted="$(gofmt -l .)"
+          if [ -z "$unformatted" ]; then
+            exit 0
           fi
+
+          echo "Folgende Dateien entsprechen nicht dem gofmt-Standard:"
+          echo "$unformatted"
+
+          while IFS= read -r file; do
+            echo "::error file=${file}::Datei ist nicht gofmt-konform (Fix: gofmt -w ${file})"
+          done <<< "$unformatted"
+
+          {
+            echo "### ❌ gofmt"
+            echo
+            echo "Folgende Dateien entsprechen nicht dem gofmt-Standard:"
+            echo '```'
+            echo "$unformatted"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
 
       # 4. Statische Code-Analyse mit den Standard-Tools (go vet)
       - name: Run go vet
-        run: go vet ./...
+        id: vet
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if go vet ./... 2>&1 | tee vet.log; then
+            exit 0
+          fi
+
+          {
+            echo "### ❌ go vet"
+            echo
+            echo '```'
+            cat vet.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
 
       # 5. Professionelles Linting (golangci-lint)
+      #    Findings erscheinen dank problem-matchers als Annotations am Code.
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        id: golangci
+        continue-on-error: true
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          problem-matchers: true
 
       # 6. Sicherheitsprüfungen auf bekannte Lücken (govulncheck)
+      #    Version muss zur Go-Version aus go.mod passen: ältere govulncheck-
+      #    Releases ziehen ein golang.org/x/tools, das mit neuem Go nicht baut.
       - name: Run Security Scan (govulncheck)
+        id: govulncheck
+        continue-on-error: true
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          $(go env GOPATH)/bin/govulncheck ./...
+          set -o pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          if "$(go env GOPATH)/bin/govulncheck" ./... 2>&1 | tee govulncheck.log; then
+            exit 0
+          fi
 
-      # 7. Tests mit Race-Detector und Coverage-Report ausführen
+          {
+            echo "### ❌ govulncheck"
+            echo
+            echo '```'
+            cat govulncheck.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
+
+      # 7. Tests mit gotestsum ausführen
+      #    Version ebenfalls an die Go-Version gekoppelt (siehe govulncheck).
       - name: Run Tests with Race Detector & Coverage
-        run: go test -v -race -coverprofile=coverage.out ./...
+        id: tests
+        continue-on-error: true
+        run: |
+          go install gotest.tools/gotestsum@v1.13.0
+          "$(go env GOPATH)/bin/gotestsum" --junitfile junit.xml -- -v -race -coverprofile=coverage.out ./...
 
-      # 8. Testabdeckung im Pipeline-Log anzeigen
+      # 8. Testergebnisse als hübsche Summary anzeigen
+      #    Nur wenn junit.xml wirklich existiert — sonst meldete dieser Schritt
+      #    ein ENOENT und damit einen Fehler, den es gar nicht gab.
+      - name: Publish Test Summary
+        if: always() && hashFiles('junit.xml') != ''
+        uses: test-summary/action@v2
+        with:
+          paths: "junit.xml"
+
+      # 8b. Fehlenden Testreport explizit dokumentieren
+      - name: Note Missing Test Report
+        if: always() && hashFiles('junit.xml') == ''
+        run: |
+          {
+            echo "### ⚠️ Keine Testergebnisse"
+            echo
+            echo 'Der Testlauf hat keine `junit.xml` erzeugt — der Testbefehl ist'
+            echo 'vor dem ersten Test abgebrochen. Details im Log von'
+            echo '"Run Tests with Race Detector & Coverage".'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 9. Testabdeckung im Pipeline-Log anzeigen
       - name: Display Test Coverage
+        if: always() && hashFiles('coverage.out') != ''
         run: go tool cover -func=coverage.out
+
+      # 10. Test-Coverage schön formatiert im Summary anzeigen
+      - name: Add Coverage Summary
+        if: always() && hashFiles('coverage.out') != ''
+        run: |
+          {
+            echo "### 📊 Code Coverage Report"
+            echo '```'
+            go tool cover -func=coverage.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 11. Gesamtergebnis dokumentieren und Job entsprechend rot/grün setzen
+      - name: QA Gate & Report
+        if: always()
+        env:
+          GOFMT: ${{ steps.gofmt.outcome }}
+          VET: ${{ steps.vet.outcome }}
+          LINT: ${{ steps.golangci.outcome }}
+          VULN: ${{ steps.govulncheck.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+        run: |
+          label() {
+            case "$1" in
+              success) echo "✅ ok" ;;
+              failure) echo "❌ fehlgeschlagen" ;;
+              skipped) echo "⏭️ übersprungen" ;;
+              *)       echo "❔ $1" ;;
+            esac
+          }
+
+          {
+            echo "### 🧾 QA-Übersicht"
+            echo
+            echo "| Check | Ergebnis |"
+            echo "| --- | --- |"
+            echo "| gofmt | $(label "$GOFMT") |"
+            echo "| go vet | $(label "$VET") |"
+            echo "| golangci-lint | $(label "$LINT") |"
+            echo "| govulncheck | $(label "$VULN") |"
+            echo "| Tests | $(label "$TESTS") |"
+            echo
+            echo "Einzelne Findings stehen als Annotations am Code sowie in den"
+            echo "Logs der jeweiligen Schritte."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          failed=""
+          for check in GOFMT VET LINT VULN TESTS; do
+            if [ "${!check}" = "failure" ]; then
+              failed="${failed} ${check}"
+            fi
+          done
+
+          if [ -n "$failed" ]; then
+            echo "::error::QA fehlgeschlagen:${failed}"
+            exit 1
+          fi
+
+          echo "Alle QA-Checks bestanden."

@@ -27,7 +27,7 @@ func (s AmazonScraper) scrape(url string) (float64, error) {
 
 	intPrice, decimals, err := s.fetchPrices(url)
 	if err != nil {
-		return 0.0, nil
+		return 0.0, err
 	}
 	price, err := strconv.ParseFloat(fmt.Sprintf("%s.%s", intPrice, decimals), 64)
 	return price, err
