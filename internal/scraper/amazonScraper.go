@@ -3,6 +3,7 @@ package scraper
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	urlpkg "net/url"
 	"regexp"
@@ -14,6 +15,9 @@ import (
 )
 
 type AmazonScraper struct {
+	// client ist im Normalbetrieb nil; Tests setzen hier einen Client mit
+	// eigenem Transport, um ohne Netzwerkzugriff zu antworten.
+	client *http.Client
 }
 
 const baseUrl = "https://www.amazon.de/"
@@ -34,26 +38,27 @@ func (s AmazonScraper) scrape(url string) (float64, error) {
 }
 
 func (s AmazonScraper) fetchPrices(url string) (integers, decimals string, err error) {
-	res, err := fetchHTML(url)
+	res, err := s.fetchHTML(url)
 
 	if err != nil {
 		return "", "", err
 	}
 	defer res.Body.Close()
-	//TODO Fetch content of html element with some xpath selector
 
 	if res.StatusCode != 200 {
 		return "", "", fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
 	}
 
-	// Load the HTML document
-	doc, err := goquery.NewDocumentFromReader(res.Body)
+	return parsePrices(res.Body)
+}
+
+func parsePrices(r io.Reader) (integers, decimals string, err error) {
+	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {
 		return "", "", err
 	}
 
 	whole := doc.Find(".a-price-whole").First()
-	// Find the review items
 	integers = whole.Text()
 	decimals = doc.Find(".a-price-fraction").First().Text()
 	sanitized := strings.ReplaceAll(integers, ",", "")
@@ -73,12 +78,19 @@ func (s AmazonScraper) scraperName() string {
 	return "Amazon.de"
 }
 
-func fetchHTML(url string) (*http.Response, error) {
-	// 1. Einen HTTP-Client erstellen (mit Timeout ist immer Best Practice!)
-	client := &http.Client{
-		Timeout: 10 * time.Second,
+// httpClient liefert den injizierten Client oder den Produktionsclient
+// (mit Timeout ist immer Best Practice!).
+func (s AmazonScraper) httpClient() *http.Client {
+	if s.client != nil {
+		return s.client
 	}
 
+	return &http.Client{
+		Timeout: 10 * time.Second,
+	}
+}
+
+func (s AmazonScraper) fetchHTML(url string) (*http.Response, error) {
 	// 2. Request-Objekt anlegen
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -93,7 +105,7 @@ func fetchHTML(url string) (*http.Response, error) {
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
 	// 4. Request absenden
-	resp, err := client.Do(req)
+	resp, err := s.httpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
