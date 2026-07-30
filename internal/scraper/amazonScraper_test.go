@@ -20,6 +20,11 @@ func TestSupports(t *testing.T) {
 			expected: false,
 		},
 		{
+			name:     "Gültige Amazon.com URL",
+			url:      "https://attacker.example/?next=https://www.amazon.de/dp/B08N5WRWNW",
+			expected: false,
+		},
+		{
 			name:     "Ungültige URL (Google)",
 			url:      "https://www.google.com",
 			expected: false,
@@ -53,13 +58,8 @@ func TestScrape(t *testing.T) {
 	}{
 		{
 			name:     "Gültige Amazon.de URL",
-			url:      "https://www.amazon.de/ASUS-Prime-Radeon-Gaming-Grafikkarte/dp/B0FMS9XQF7?dib=eyJ2IjoiMSJ9.Ahed929b2TPNEEcFrq8g0JnLrW8KIbUTFglx1MXUwGpRBpDeQLEjc5h9DJMTqAlVnLSbY5J1gmemjwnEFdQCSwKsvn50Z6WaDoQC1Y1UGPKm6UzbiyfaQ1oQGxzs5eAtklRzAse1QPuSfCz2fKm9_wgwMKJ32RkaR-XNhXBaFTcYB-mfg5Qd1vf9PjMIfXO0O1_YywP1fchDafr7bNUdUuRP5A1-yEQlIcvN9X6H8PY.-V_VJZyv-MJEFffZSMtQd4YmpJ5ai_owM9wb15bNJ0g&dib_tag=se&keywords=rx%2B9070&qid=1785399398&sr=8-3&th=1",
-			expected: 576.11,
-		},
-		{
-			name:     "Gültige Amazon.de URL",
-			url:      "https://www.amazon.de/ASUS-Prime-Radeon-Gaming-Grafikkarte/dp/B0FMS9XQF7",
-			expected: 576.11,
+			url:      "https://www.amazon.de/dp/B0GFDPHRXS",
+			expected: 1117.45,
 		},
 		{
 			name:     "Gültige Amazon.de URL",

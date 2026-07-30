@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	urlpkg "net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,7 +18,8 @@ type AmazonScraper struct {
 }
 
 const baseUrl = "https://www.amazon.de/"
-const regExPattern = `\.de\/[\w\-]*\/?dp\/\w+[\/\?]?`
+
+var amazonProductPath = regexp.MustCompile(`^/(?:[^/]+/)?dp/[A-Za-z0-9]{10}(?:/|$)`)
 
 func (s AmazonScraper) scrape(url string) (float64, error) {
 	if s.supports(url) == false {
@@ -42,7 +44,7 @@ func (s AmazonScraper) fetchPrices(url string) (integers, decimals string, err e
 	//TODO Fetch content of html element with some xpath selector
 
 	if res.StatusCode != 200 {
-		log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
+		return "", "", fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
 	}
 
 	// Load the HTML document
@@ -55,16 +57,17 @@ func (s AmazonScraper) fetchPrices(url string) (integers, decimals string, err e
 	// Find the review items
 	integers = whole.Text()
 	decimals = doc.Find(".a-price-fraction").First().Text()
-
-	return strings.ReplaceAll(integers, ",", ""), decimals, nil
+	sanitized := strings.ReplaceAll(integers, ",", "")
+	sanitized = strings.ReplaceAll(sanitized, ".", "")
+	return sanitized, decimals, nil
 }
 
 func (s AmazonScraper) supports(url string) bool {
-	if strings.Contains(url, baseUrl) == false {
-		return false
-	}
-
-	return regexp.MustCompile(regExPattern).MatchString(url)
+	parsed, err := urlpkg.Parse(url)
+	return err == nil &&
+		parsed.Scheme == "https" &&
+		strings.EqualFold(parsed.Hostname(), "www.amazon.de") &&
+		amazonProductPath.MatchString(parsed.EscapedPath())
 }
 
 func (s AmazonScraper) scraperName() string {
