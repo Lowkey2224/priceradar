@@ -42,8 +42,6 @@ jobs:
       # 5. Professionelles Linting (golangci-lint)
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.60
 
       # 6. Sicherheitsprüfungen auf bekannte Lücken (govulncheck)
       - name: Run Security Scan (govulncheck)
