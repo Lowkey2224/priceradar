@@ -5,24 +5,38 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  # Wöchentlicher Lauf: die Vulnerability-DB hinter govulncheck ändert sich,
+  # ohne dass hier jemand committet. Fängt außerdem Brüche durch neue
+  # Go-Releases früh ab, statt erst beim nächsten PR.
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+# Ein veralteter Lauf pro Branch reicht — der zweite Push bricht den ersten ab.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   qa-and-test:
     name: Code Quality & Tests
     runs-on: ubuntu-latest
+    # Ohne dieses Limit greift der Default von 360 Minuten. Die Scraper-Tests
+    # sprechen echte Hosts an; ein hängender Request soll keinen Runner blockieren.
+    timeout-minutes: 15
     permissions:
       contents: read # Minimale Berechtigung für maximale Sicherheit
 
     steps:
       # 1. Repository auschecken
       - name: Checkout Code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       # 2. Go-Umgebung aufsetzen & Caching aktivieren
       - name: Set up Go
-        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -31,7 +45,70 @@ jobs:
       # durch, damit ein früher Fehlschlag die späteren Checks nicht verdeckt.
       # Rot wird der Job am Ende über den Schritt "QA Gate & Report".
 
-      # 3. Code-Formatierung prüfen (gofmt)
+      # 3. Modul-Integrität und aufgeräumte go.mod/go.sum prüfen
+      - name: Check Go Modules
+        id: gomod
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          failed=0
+
+          if ! go mod verify 2>&1 | tee gomod-verify.log; then
+            {
+              echo "### ❌ go mod verify"
+              echo
+              echo '```'
+              cat gomod-verify.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            failed=1
+          fi
+
+          go mod tidy
+          if ! git diff --exit-code -- go.mod go.sum > tidy.diff 2>&1; then
+            echo "go.mod/go.sum sind nicht aufgeraeumt:"
+            cat tidy.diff
+            echo "::error file=go.mod::go mod tidy erzeugt Aenderungen - lokal ausfuehren und committen"
+            {
+              echo "### ❌ go mod tidy"
+              echo
+              echo "go.mod/go.sum sind nicht aufgeräumt. Lokal \`go mod tidy\` laufen lassen und committen."
+              echo '```diff'
+              cat tidy.diff
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            failed=1
+          fi
+
+          # go mod tidy hat die Dateien womöglich verändert - Ausgangsstand
+          # wiederherstellen, damit die folgenden Schritte den committeten
+          # Zustand pruefen und nicht den korrigierten.
+          git checkout -- go.mod go.sum
+
+          exit $failed
+
+      # 4. Kompilierbarkeit des gesamten Moduls prüfen
+      #    Tests allein bauen nur die Pakete, die auch Tests haben.
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if go build ./... 2>&1 | tee build.log; then
+            exit 0
+          fi
+
+          {
+            echo "### ❌ go build"
+            echo
+            echo '```'
+            cat build.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
+
+      # 5. Code-Formatierung prüfen (gofmt)
       - name: Check Formatting (gofmt)
         id: gofmt
         continue-on-error: true
@@ -59,7 +136,7 @@ jobs:
 
           exit 1
 
-      # 4. Statische Code-Analyse mit den Standard-Tools (go vet)
+      # 6. Statische Code-Analyse mit den Standard-Tools (go vet)
       - name: Run go vet
         id: vet
         continue-on-error: true
@@ -79,8 +156,9 @@ jobs:
 
           exit 1
 
-      # 5. Professionelles Linting (golangci-lint)
-      #    Findings erscheinen dank problem-matchers als Annotations am Code.
+      # 7. Professionelles Linting (golangci-lint)
+      #    Linter-Auswahl steht in .golangci.yml, Findings erscheinen dank
+      #    problem-matchers als Annotations am Code.
       - name: Run golangci-lint
         id: golangci
         continue-on-error: true
@@ -89,7 +167,7 @@ jobs:
           version: v2.12.2
           problem-matchers: true
 
-      # 6. Sicherheitsprüfungen auf bekannte Lücken (govulncheck)
+      # 8. Sicherheitsprüfungen auf bekannte Lücken (govulncheck)
       #    Version muss zur Go-Version aus go.mod passen: ältere govulncheck-
       #    Releases ziehen ein golang.org/x/tools, das mit neuem Go nicht baut.
       - name: Run Security Scan (govulncheck)
@@ -112,7 +190,7 @@ jobs:
 
           exit 1
 
-      # 7. Tests mit gotestsum ausführen
+      # 9. Tests mit gotestsum ausführen
       #    Version ebenfalls an die Go-Version gekoppelt (siehe govulncheck).
       - name: Run Tests with Race Detector & Coverage
         id: tests
@@ -121,33 +199,33 @@ jobs:
           go install gotest.tools/gotestsum@v1.13.0
           "$(go env GOPATH)/bin/gotestsum" --junitfile junit.xml -- -v -race -coverprofile=coverage.out ./...
 
-      # 8. Testergebnisse als hübsche Summary anzeigen
-      #    Nur wenn junit.xml wirklich existiert — sonst meldete dieser Schritt
-      #    ein ENOENT und damit einen Fehler, den es gar nicht gab.
+      # 10. Testergebnisse als hübsche Summary anzeigen
+      #     Nur wenn junit.xml wirklich existiert — sonst meldete dieser Schritt
+      #     ein ENOENT und damit einen Fehler, den es gar nicht gab.
       - name: Publish Test Summary
         if: always() && hashFiles('junit.xml') != ''
         uses: test-summary/action@v2
         with:
           paths: "junit.xml"
 
-      # 8b. Fehlenden Testreport explizit dokumentieren
+      # 10b. Fehlenden Testreport explizit dokumentieren
       - name: Note Missing Test Report
         if: always() && hashFiles('junit.xml') == ''
         run: |
           {
             echo "### ⚠️ Keine Testergebnisse"
             echo
-            echo 'Der Testlauf hat keine `junit.xml` erzeugt — der Testbefehl ist'
+            echo "Der Testlauf hat keine \`junit.xml\` erzeugt — der Testbefehl ist"
             echo 'vor dem ersten Test abgebrochen. Details im Log von'
             echo '"Run Tests with Race Detector & Coverage".'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # 9. Testabdeckung im Pipeline-Log anzeigen
+      # 11. Testabdeckung im Pipeline-Log anzeigen
       - name: Display Test Coverage
         if: always() && hashFiles('coverage.out') != ''
         run: go tool cover -func=coverage.out
 
-      # 10. Test-Coverage schön formatiert im Summary anzeigen
+      # 12. Test-Coverage schön formatiert im Summary anzeigen
       - name: Add Coverage Summary
         if: always() && hashFiles('coverage.out') != ''
         run: |
@@ -158,10 +236,25 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # 11. Gesamtergebnis dokumentieren und Job entsprechend rot/grün setzen
+      # 13. Rohdaten als Artefakt sichern, damit ein roter Lauf lokal
+      #     analysierbar ist statt nur durchs Log scrollbar.
+      - name: Upload Test & Coverage Artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results
+          path: |
+            junit.xml
+            coverage.out
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # 14. Gesamtergebnis dokumentieren und Job entsprechend rot/grün setzen
       - name: QA Gate & Report
         if: always()
         env:
+          GOMOD: ${{ steps.gomod.outcome }}
+          BUILD: ${{ steps.build.outcome }}
           GOFMT: ${{ steps.gofmt.outcome }}
           VET: ${{ steps.vet.outcome }}
           LINT: ${{ steps.golangci.outcome }}
@@ -182,6 +275,8 @@ jobs:
             echo
             echo "| Check | Ergebnis |"
             echo "| --- | --- |"
+            echo "| go mod verify / tidy | $(label "$GOMOD") |"
+            echo "| go build | $(label "$BUILD") |"
             echo "| gofmt | $(label "$GOFMT") |"
             echo "| go vet | $(label "$VET") |"
             echo "| golangci-lint | $(label "$LINT") |"
@@ -189,11 +284,11 @@ jobs:
             echo "| Tests | $(label "$TESTS") |"
             echo
             echo "Einzelne Findings stehen als Annotations am Code sowie in den"
-            echo "Logs der jeweiligen Schritte."
+            echo "Logs der jeweiligen Schritte. Rohdaten unter Artifacts."
           } >> "$GITHUB_STEP_SUMMARY"
 
           failed=""
-          for check in GOFMT VET LINT VULN TESTS; do
+          for check in GOMOD BUILD GOFMT VET LINT VULN TESTS; do
             if [ "${!check}" = "failure" ]; then
               failed="${failed} ${check}"
             fi
