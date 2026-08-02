@@ -204,7 +204,7 @@ jobs:
       #     ein ENOENT und damit einen Fehler, den es gar nicht gab.
       - name: Publish Test Summary
         if: always() && hashFiles('junit.xml') != ''
-        uses: test-summary/action@v2
+        uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5
         with:
           paths: "junit.xml"
 
