@@ -55,7 +55,7 @@ func parsePrices(r io.Reader) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	priceElem := doc.Find(".a-price").First()
+	priceElem := doc.Find("#apex-core-price-identifier")
 	whole := priceElem.Find(".a-price-whole").First()
 
 	decimals := priceElem.Find(".a-price-fraction").First().Text()
