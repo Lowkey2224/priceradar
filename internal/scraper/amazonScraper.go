@@ -23,47 +23,46 @@ type AmazonScraper struct {
 const baseUrl = "https://www.amazon.de/"
 
 var amazonProductPath = regexp.MustCompile(`^/(?:[^/]+/)?dp/[A-Za-z0-9]{10}(?:/|$)`)
+var ErrPriceNotFound = errors.New("price not found")
 
 func (s AmazonScraper) scrape(url string) (float64, error) {
 	if s.supports(url) == false {
 		return 0, errors.New("URL is not supported")
 	}
 
-	intPrice, decimals, err := s.fetchPrices(url)
-	if err != nil {
-		return 0.0, err
-	}
-	price, err := strconv.ParseFloat(fmt.Sprintf("%s.%s", intPrice, decimals), 64)
-	return price, err
+	return s.fetchPrices(url)
 }
 
-func (s AmazonScraper) fetchPrices(url string) (integers, decimals string, err error) {
+func (s AmazonScraper) fetchPrices(url string) (float64, error) {
 	res, err := s.fetchHTML(url)
 
 	if err != nil {
-		return "", "", err
+		return 0, err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		return "", "", fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+		return 0, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
 	}
 
 	return parsePrices(res.Body)
 }
 
-func parsePrices(r io.Reader) (integers, decimals string, err error) {
+func parsePrices(r io.Reader) (float64, error) {
 	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {
-		return "", "", err
+		return 0, err
 	}
 
 	whole := doc.Find(".a-price-whole").First()
-	integers = whole.Text()
-	decimals = doc.Find(".a-price-fraction").First().Text()
-	sanitized := strings.ReplaceAll(integers, ",", "")
+
+	decimals := doc.Find(".a-price-fraction").First().Text()
+	sanitized := strings.ReplaceAll(whole.Text(), ",", "")
 	sanitized = strings.ReplaceAll(sanitized, ".", "")
-	return sanitized, decimals, nil
+	if sanitized == "" || decimals == "" {
+		return 0, fmt.Errorf("%w: integer: %v, decimal: %v", ErrPriceNotFound, sanitized, decimals)
+	}
+	return strconv.ParseFloat(fmt.Sprintf("%s.%s", sanitized, decimals), 64)
 }
 
 func (s AmazonScraper) supports(url string) bool {

@@ -110,47 +110,45 @@ func TestSupports(t *testing.T) {
 // bricht, sobald Amazon sein Markup ändert. Kein HTTP im Spiel.
 func TestParsePrices(t *testing.T) {
 	tests := []struct {
-		name             string
-		html             string
-		expectedIntegers string
-		expectedDecimals string
+		name        string
+		html        string
+		expected    float64
+		expectedErr error
 	}{
 		{
-			name:             "Tausenderpunkt und Dezimalkomma",
-			html:             `<span class="a-price-whole">1.117<span class="a-price-decimal">,</span></span><span class="a-price-fraction">45</span>`,
-			expectedIntegers: "1117",
-			expectedDecimals: "45",
+			name:     "Tausenderpunkt und Dezimalkomma",
+			html:     `<span class="a-price-whole">1.117<span class="a-price-decimal">,</span></span><span class="a-price-fraction">45</span>`,
+			expected: 1117.45,
 		},
 		{
-			name:             "Preis ohne Tausendertrenner",
-			html:             `<span class="a-price-whole">576<span class="a-price-decimal">,</span></span><span class="a-price-fraction">11</span>`,
-			expectedIntegers: "576",
-			expectedDecimals: "11",
+			name:     "Preis ohne Tausendertrenner",
+			html:     `<span class="a-price-whole">576<span class="a-price-decimal">,</span></span><span class="a-price-fraction">11</span>`,
+			expected: 576.11,
 		},
 		{
 			name: "Erster Preisblock gewinnt",
 			html: `<span class="a-price-whole">576<span class="a-price-decimal">,</span></span><span class="a-price-fraction">11</span>` +
 				`<span class="a-price-whole">999<span class="a-price-decimal">,</span></span><span class="a-price-fraction">99</span>`,
-			expectedIntegers: "576",
-			expectedDecimals: "11",
+			expected: 576.11,
 		},
 		{
-			name:             "Kein Preis im Markup",
-			html:             `<div id="availability">Derzeit nicht verfügbar</div>`,
-			expectedIntegers: "",
-			expectedDecimals: "",
+			name:        "Kein Preis im Markup",
+			html:        `<div id="availability">Derzeit nicht verfügbar</div>`,
+			expected:    0,
+			expectedErr: ErrPriceNotFound,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotInt, gotDec, err := parsePrices(strings.NewReader(tt.html))
-			if err != nil {
-				t.Fatalf("parsePrices() unerwarteter Fehler: %v", err)
+			got, err := parsePrices(strings.NewReader(tt.html))
+			if tt.expectedErr != nil && errors.Is(err, tt.expectedErr) == false {
+				t.Fatalf("parsePrices() unerwarteter Fehler: %v; want %v", err, tt.expectedErr)
 			}
-			if gotInt != tt.expectedIntegers || gotDec != tt.expectedDecimals {
-				t.Errorf("parsePrices() = %q, %q; want %q, %q",
-					gotInt, gotDec, tt.expectedIntegers, tt.expectedDecimals)
+
+			if got != tt.expected {
+				t.Errorf("parsePrices() = %f; want %f",
+					got, tt.expected)
 			}
 		})
 	}
@@ -245,19 +243,19 @@ func TestFetchPrice(t *testing.T) {
 	t.Run("Preis aus der Antwort", func(t *testing.T) {
 		scraper := AmazonScraper{client: clientReturning(http.StatusOK, fixture)}
 
-		gotInt, gotDec, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7")
+		got, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7")
 		if err != nil {
 			t.Fatalf("fetchPrices() unerwarteter Fehler: %v", err)
 		}
-		if gotInt != "576" || gotDec != "11" {
-			t.Errorf("fetchPrices() = %q, %q; want %q, %q", gotInt, gotDec, "576", "11")
+		if got != 576.11 {
+			t.Errorf("fetchPrices() = %f; want %f", got, 576.11)
 		}
 	})
 
 	t.Run("Status ungleich 200 wird gemeldet", func(t *testing.T) {
 		scraper := AmazonScraper{client: clientReturning(http.StatusServiceUnavailable, "")}
 
-		_, _, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7")
+		_, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7")
 		if err == nil {
 			t.Fatal("fetchPrices() = nil; want Fehler wegen Status 503")
 		}
@@ -270,7 +268,7 @@ func TestFetchPrice(t *testing.T) {
 		wantErr := errors.New("Verbindung abgebrochen")
 		scraper := AmazonScraper{client: clientFailing(wantErr)}
 
-		_, _, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7")
+		_, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7")
 		if !errors.Is(err, wantErr) {
 			t.Errorf("fetchPrices() = %v; want %v", err, wantErr)
 		}
@@ -291,7 +289,7 @@ func TestFetchPrice(t *testing.T) {
 			}),
 		}}
 
-		if _, _, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7"); err != nil {
+		if _, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7"); err != nil {
 			t.Fatalf("fetchPrices() unerwarteter Fehler: %v", err)
 		}
 		if !strings.Contains(seen.Get("User-Agent"), "Mozilla/5.0") {
