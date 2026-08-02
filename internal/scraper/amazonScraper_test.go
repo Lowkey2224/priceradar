@@ -117,18 +117,18 @@ func TestParsePrices(t *testing.T) {
 	}{
 		{
 			name:     "Tausenderpunkt und Dezimalkomma",
-			html:     `<span class="a-price-whole">1.117<span class="a-price-decimal">,</span></span><span class="a-price-fraction">45</span>`,
+			html:     `<span class="a-price"><span class="a-price-whole">1.117<span class="a-price-decimal">,</span></span><span class="a-price-fraction">45</span></span>`,
 			expected: 1117.45,
 		},
 		{
 			name:     "Preis ohne Tausendertrenner",
-			html:     `<span class="a-price-whole">576<span class="a-price-decimal">,</span></span><span class="a-price-fraction">11</span>`,
+			html:     `<span class="a-price"><span class="a-price-whole">576<span class="a-price-decimal">,</span></span><span class="a-price-fraction">11</span></span>`,
 			expected: 576.11,
 		},
 		{
 			name: "Erster Preisblock gewinnt",
-			html: `<span class="a-price-whole">576<span class="a-price-decimal">,</span></span><span class="a-price-fraction">11</span>` +
-				`<span class="a-price-whole">999<span class="a-price-decimal">,</span></span><span class="a-price-fraction">99</span>`,
+			html: `<span class="a-price"><span class="a-price-whole">576<span class="a-price-decimal">,</span></span><span class="a-price-fraction">11</span></span>` +
+				`<span class="a-price"><span class="a-price-whole">999<span class="a-price-decimal">,</span></span><span class="a-price-fraction">99</span></span>`,
 			expected: 576.11,
 		},
 		{

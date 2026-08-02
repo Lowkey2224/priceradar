@@ -39,7 +39,11 @@ func (s AmazonScraper) fetchPrices(url string) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer res.Body.Close()
+	defer func() {
+		if closeErr := res.Body.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
 
 	if res.StatusCode != 200 {
 		return 0, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
@@ -53,10 +57,10 @@ func parsePrices(r io.Reader) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
+	priceElem := doc.Find(".a-price").First()
+	whole := priceElem.Find(".a-price-whole").First()
 
-	whole := doc.Find(".a-price-whole").First()
-
-	decimals := doc.Find(".a-price-fraction").First().Text()
+	decimals := priceElem.Find(".a-price-fraction").First().Text()
 	sanitized := strings.ReplaceAll(whole.Text(), ",", "")
 	sanitized = strings.ReplaceAll(sanitized, ".", "")
 	if sanitized == "" || decimals == "" {
