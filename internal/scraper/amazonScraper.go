@@ -20,13 +20,11 @@ type AmazonScraper struct {
 	client *http.Client
 }
 
-const baseUrl = "https://www.amazon.de/"
-
 var amazonProductPath = regexp.MustCompile(`^/(?:[^/]+/)?dp/[A-Za-z0-9]{10}(?:/|$)`)
 var ErrPriceNotFound = errors.New("price not found")
 
 func (s AmazonScraper) scrape(url string) (float64, error) {
-	if s.supports(url) == false {
+	if !s.supports(url) {
 		return 0, errors.New("URL is not supported")
 	}
 

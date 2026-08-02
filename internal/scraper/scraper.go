@@ -1,7 +1,6 @@
 package scraper
 
 type Scraper struct {
-	url string
 }
 
 type ScraperInterface interface {
