@@ -113,7 +113,10 @@ jobs:
         id: gofmt
         continue-on-error: true
         run: |
-          unformatted="$(gofmt -l .)"
+          if ! unformatted="$(find . -type f -name '*.go' -not -path './vendor/*' -exec gofmt -l {} +)"; then
+            echo "::error::gofmt could not inspect Go files"
+            exit 1
+          fi
           if [ -z "$unformatted" ]; then
             exit 0
           fi
