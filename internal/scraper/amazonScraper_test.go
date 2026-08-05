@@ -12,14 +12,14 @@ import (
 	"time"
 )
 
-// roundTripFunc erlaubt es, einen http.Client ohne Netzwerkzugriff zu bestücken.
+// roundTripFunc lets tests stub an http.Client's transport, so no request leaves the process.
 type roundTripFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-// clientReturning antwortet auf jede Anfrage mit status und body.
+// clientReturning answers every request with status and body.
 func clientReturning(status int, body string) *http.Client {
 	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
@@ -32,20 +32,19 @@ func clientReturning(status int, body string) *http.Client {
 	})}
 }
 
-// clientFailing simuliert einen Transportfehler, etwa eine abgebrochene Verbindung.
+// clientFailing simulates a transport error, e.g. a dropped connection.
 func clientFailing(err error) *http.Client {
 	return &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, err
 	})}
 }
 
-// clientRejectingRequests lässt den Test fehlschlagen, sobald überhaupt ein
-// Request abgesetzt wird.
+// clientRejectingRequests fails the test as soon as any request is sent.
 func clientRejectingRequests(t *testing.T) *http.Client {
 	t.Helper()
 	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		t.Errorf("unerwarteter HTTP-Request an %s", req.URL)
-		return nil, errors.New("dieser Client darf nicht verwendet werden")
+		t.Errorf("unexpected HTTP request to %s", req.URL)
+		return nil, errors.New("this client must not be used")
 	})}
 }
 
@@ -53,40 +52,39 @@ func loadFixture(t *testing.T, name string) string {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join("testdata", name))
 	if err != nil {
-		t.Fatalf("Fixture %q ist nicht lesbar: %v", name, err)
+		t.Fatalf("fixture %q is not readable: %v", name, err)
 	}
 	return string(content)
 }
 
 func TestSupports(t *testing.T) {
-	// 1. Die Testtabelle (DataProvider) als Slice von Structs
 	tests := []struct {
-		name     string // Name des Testfalls
-		url      string // Input
-		expected bool   // Erwartetes Ergebnis
+		name     string
+		url      string
+		expected bool
 	}{
 		{
-			name:     "Gültige Amazon.de URL",
+			name:     "valid Amazon.de URL",
 			url:      "https://www.amazon.de/dp/B08N5WRWNW/",
 			expected: true,
 		},
 		{
-			name:     "Gültige Amazon.com URL",
+			name:     "Amazon.com URL",
 			url:      "https://www.amazon.com/dp/B08N5WRWNW/",
 			expected: false,
 		},
 		{
-			name:     "Gültige Amazon.com URL",
+			name:     "foreign host with Amazon.de URL in query",
 			url:      "https://attacker.example/?next=https://www.amazon.de/dp/B08N5WRWNW",
 			expected: false,
 		},
 		{
-			name:     "Ungültige URL (Google)",
+			name:     "unsupported URL (Google)",
 			url:      "https://www.google.com",
 			expected: false,
 		},
 		{
-			name:     "Leere URL",
+			name:     "empty URL",
 			url:      "",
 			expected: false,
 		},
@@ -94,9 +92,7 @@ func TestSupports(t *testing.T) {
 
 	scraper := AmazonScraper{}
 
-	// 2. Iteration über die Testfälle
 	for _, tt := range tests {
-		// t.Run führt jeden Fall als isolierten Unter-Test aus
 		t.Run(tt.name, func(t *testing.T) {
 			got := scraper.supports(tt.url)
 			if got != tt.expected {
@@ -106,8 +102,8 @@ func TestSupports(t *testing.T) {
 	}
 }
 
-// TestParsePrices deckt die Selektor- und Sanitize-Logik ab - den Teil, der
-// bricht, sobald Amazon sein Markup ändert. Kein HTTP im Spiel.
+// TestParsePrices covers the selector and sanitize logic - the part that
+// breaks as soon as Amazon changes its markup. No HTTP involved.
 func TestParsePrices(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -116,17 +112,17 @@ func TestParsePrices(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			name:     "Tausenderpunkt und Dezimalkomma",
+			name:     "thousands separator and decimal comma",
 			html:     `<span id="apex-core-price-identifier"><span class="a-price-whole">1.117<span class="a-price-decimal">,</span></span><span class="a-price-fraction">45</span></span>`,
 			expected: 1117.45,
 		},
 		{
-			name:     "Preis ohne Tausendertrenner",
+			name:     "price without thousands separator",
 			html:     `<span id="apex-core-price-identifier"><span class="a-price-whole">576<span class="a-price-decimal">,</span></span><span class="a-price-fraction">11</span></span>`,
 			expected: 576.11,
 		},
 		{
-			name:        "Kein Preis im Markup",
+			name:        "no price in markup",
 			html:        `<div id="availability">Derzeit nicht verfügbar</div>`,
 			expected:    0,
 			expectedErr: ErrPriceNotFound,
@@ -137,7 +133,7 @@ func TestParsePrices(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := parsePrices(strings.NewReader(tt.html))
 			if tt.expectedErr != nil && errors.Is(err, tt.expectedErr) == false {
-				t.Fatalf("parsePrices() unerwarteter Fehler: %v; want %v", err, tt.expectedErr)
+				t.Fatalf("parsePrices() unexpected error: %v; want %v", err, tt.expectedErr)
 			}
 
 			if got != tt.expected {
@@ -149,20 +145,20 @@ func TestParsePrices(t *testing.T) {
 }
 
 func TestHTTPClient(t *testing.T) {
-	t.Run("ohne Injektion greift der Produktionsclient", func(t *testing.T) {
+	t.Run("without injection the production client applies", func(t *testing.T) {
 		got := AmazonScraper{}.httpClient()
 		if got == nil {
-			t.Fatal("httpClient() = nil; want Client mit Timeout")
+			t.Fatal("httpClient() = nil; want client with timeout")
 		}
 		if got.Timeout != 10*time.Second {
 			t.Errorf("Timeout = %v; want %v", got.Timeout, 10*time.Second)
 		}
 	})
 
-	t.Run("injizierter Client gewinnt", func(t *testing.T) {
+	t.Run("injected client wins", func(t *testing.T) {
 		injected := clientReturning(http.StatusOK, "")
 		if got := (AmazonScraper{client: injected}).httpClient(); got != injected {
-			t.Error("httpClient() liefert nicht den injizierten Client")
+			t.Error("httpClient() does not return the injected client")
 		}
 	})
 }
@@ -179,21 +175,21 @@ func TestScrape(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "Gültige Amazon.de URL",
+			name:     "valid Amazon.de URL",
 			url:      "https://www.amazon.de/dp/B0FMS9XQF7",
 			status:   http.StatusOK,
 			body:     fixture,
 			expected: 576.11,
 		},
 		{
-			name:    "Amazon antwortet mit 503",
+			name:    "Amazon responds with 503",
 			url:     "https://www.amazon.de/dp/B0FMS9XQF7",
 			status:  http.StatusServiceUnavailable,
 			body:    "",
 			wantErr: true,
 		},
 		{
-			name:    "Seite ohne Preis",
+			name:    "page without price",
 			url:     "https://www.amazon.de/dp/B0FMS9XQF7",
 			status:  http.StatusOK,
 			body:    `<div id="availability">Derzeit nicht verfügbar</div>`,
@@ -208,12 +204,12 @@ func TestScrape(t *testing.T) {
 			got, err := scraper.scrape(tt.url)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("scrape(%q) = %v, nil; want Fehler", tt.url, got)
+					t.Fatalf("scrape(%q) = %v, nil; want error", tt.url, got)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("scrape(%q) unerwarteter Fehler: %v", tt.url, err)
+				t.Fatalf("scrape(%q) unexpected error: %v", tt.url, err)
 			}
 			if got != tt.expected {
 				t.Errorf("scrape(%q) = %v; want %v", tt.url, got, tt.expected)
@@ -221,12 +217,12 @@ func TestScrape(t *testing.T) {
 		})
 	}
 
-	t.Run("Nicht unterstützte URL löst keinen Request aus", func(t *testing.T) {
+	t.Run("unsupported URL triggers no request", func(t *testing.T) {
 		scraper := AmazonScraper{client: clientRejectingRequests(t)}
 
 		got, err := scraper.scrape("https://www.amazon.com/dp/B0FMS9XQF7")
 		if err == nil {
-			t.Fatalf("scrape() = %v, nil; want Fehler", got)
+			t.Fatalf("scrape() = %v, nil; want error", got)
 		}
 	})
 }
@@ -234,32 +230,32 @@ func TestScrape(t *testing.T) {
 func TestFetchPrice(t *testing.T) {
 	fixture := loadFixture(t, "amazon-dp-B0FMS9XQF7.html")
 
-	t.Run("Preis aus der Antwort", func(t *testing.T) {
+	t.Run("price from the response", func(t *testing.T) {
 		scraper := AmazonScraper{client: clientReturning(http.StatusOK, fixture)}
 
 		got, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7")
 		if err != nil {
-			t.Fatalf("fetchPrices() unerwarteter Fehler: %v", err)
+			t.Fatalf("fetchPrices() unexpected error: %v", err)
 		}
 		if got != 576.11 {
 			t.Errorf("fetchPrices() = %f; want %f", got, 576.11)
 		}
 	})
 
-	t.Run("Status ungleich 200 wird gemeldet", func(t *testing.T) {
+	t.Run("status other than 200 is reported", func(t *testing.T) {
 		scraper := AmazonScraper{client: clientReturning(http.StatusServiceUnavailable, "")}
 
 		_, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7")
 		if err == nil {
-			t.Fatal("fetchPrices() = nil; want Fehler wegen Status 503")
+			t.Fatal("fetchPrices() = nil; want error because of status 503")
 		}
 		if !strings.Contains(err.Error(), "503") {
-			t.Errorf("Fehler nennt den Status nicht: %v", err)
+			t.Errorf("error does not name the status: %v", err)
 		}
 	})
 
-	t.Run("Transportfehler wird durchgereicht", func(t *testing.T) {
-		wantErr := errors.New("Verbindung abgebrochen")
+	t.Run("transport error is passed through", func(t *testing.T) {
+		wantErr := errors.New("connection dropped")
 		scraper := AmazonScraper{client: clientFailing(wantErr)}
 
 		_, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7")
@@ -268,7 +264,7 @@ func TestFetchPrice(t *testing.T) {
 		}
 	})
 
-	t.Run("Browser-Header werden gesetzt", func(t *testing.T) {
+	t.Run("browser headers are set", func(t *testing.T) {
 		var seen http.Header
 		scraper := AmazonScraper{client: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -284,13 +280,13 @@ func TestFetchPrice(t *testing.T) {
 		}}
 
 		if _, err := scraper.fetchPrices("https://www.amazon.de/dp/B0FMS9XQF7"); err != nil {
-			t.Fatalf("fetchPrices() unerwarteter Fehler: %v", err)
+			t.Fatalf("fetchPrices() unexpected error: %v", err)
 		}
 		if !strings.Contains(seen.Get("User-Agent"), "Mozilla/5.0") {
-			t.Errorf("User-Agent = %q; want Browser-Kennung", seen.Get("User-Agent"))
+			t.Errorf("User-Agent = %q; want browser identifier", seen.Get("User-Agent"))
 		}
 		if !strings.HasPrefix(seen.Get("Accept-Language"), "de-DE") {
-			t.Errorf("Accept-Language = %q; want de-DE zuerst", seen.Get("Accept-Language"))
+			t.Errorf("Accept-Language = %q; want de-DE first", seen.Get("Accept-Language"))
 		}
 	})
 }

@@ -1,7 +1,7 @@
 version: 2
 updates:
-  # Hält die per Commit-SHA gepinnten Actions aktuell. Veraltete Pins waren die
-  # Ursache des Pipeline-Ausfalls (Go 1.26 vs. altes golang.org/x/tools).
+  # Keeps the commit-SHA-pinned actions up to date. Stale pins were the cause
+  # of the pipeline outage (Go 1.26 vs. old golang.org/x/tools).
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

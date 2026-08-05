@@ -53,13 +53,13 @@ jobs:
 
           go mod tidy
           if ! git diff --exit-code -- go.mod go.sum > tidy.diff 2>&1; then
-            echo "go.mod/go.sum sind nicht aufgeraeumt:"
+            echo "go.mod/go.sum are not tidy:"
             cat tidy.diff
-            echo "::error file=go.mod::go mod tidy erzeugt Aenderungen - lokal ausfuehren und committen"
+            echo "::error file=go.mod::go mod tidy produces changes - run it locally and commit"
             {
               echo "### ❌ go mod tidy"
               echo
-              echo "go.mod/go.sum sind nicht aufgeräumt. Lokal \`go mod tidy\` laufen lassen und committen."
+              echo "go.mod/go.sum are not tidy. Run \`go mod tidy\` locally and commit."
               echo '```diff'
               cat tidy.diff
               echo '```'
@@ -67,9 +67,9 @@ jobs:
             failed=1
           fi
 
-          # go mod tidy hat die Dateien womöglich verändert - Ausgangsstand
-          # wiederherstellen, damit die folgenden Schritte den committeten
-          # Zustand pruefen und nicht den korrigierten.
+          # go mod tidy may have modified the files - restore the original
+          # state so the following steps check the committed state and not
+          # the corrected one.
           git checkout -- go.mod go.sum
 
           exit $failed
@@ -105,17 +105,17 @@ jobs:
             exit 0
           fi
 
-          echo "Folgende Dateien entsprechen nicht dem gofmt-Standard:"
+          echo "The following files do not match the gofmt standard:"
           echo "$unformatted"
 
           while IFS= read -r file; do
-            echo "::error file=${file}::Datei ist nicht gofmt-konform (Fix: gofmt -w ${file})"
+            echo "::error file=${file}::File is not gofmt-compliant (fix: gofmt -w ${file})"
           done <<< "$unformatted"
 
           {
             echo "### ❌ gofmt"
             echo
-            echo "Folgende Dateien entsprechen nicht dem gofmt-Standard:"
+            echo "The following files do not match the gofmt standard:"
             echo '```'
             echo "$unformatted"
             echo '```'
@@ -186,11 +186,11 @@ jobs:
         if: always() && hashFiles('junit.xml') == ''
         run: |
           {
-            echo "### ⚠️ Keine Testergebnisse"
+            echo "### ⚠️ No test results"
             echo
-            echo "Der Testlauf hat keine \`junit.xml\` erzeugt — der Testbefehl ist"
-            echo 'vor dem ersten Test abgebrochen. Details im Log von'
-            echo '"Run Tests with Race Detector & Coverage".'
+            echo "The test run produced no \`junit.xml\` — the test command aborted"
+            echo 'before the first test. See the log of'
+            echo '"Run Tests with Race Detector & Coverage" for details.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Display Test Coverage
@@ -232,16 +232,16 @@ jobs:
           label() {
             case "$1" in
               success) echo "✅ ok" ;;
-              failure) echo "❌ fehlgeschlagen" ;;
-              skipped) echo "⏭️ übersprungen" ;;
+              failure) echo "❌ failed" ;;
+              skipped) echo "⏭️ skipped" ;;
               *)       echo "❔ $1" ;;
             esac
           }
 
           {
-            echo "### 🧾 QA-Übersicht"
+            echo "### 🧾 QA overview"
             echo
-            echo "| Check | Ergebnis |"
+            echo "| Check | Result |"
             echo "| --- | --- |"
             echo "| go mod verify / tidy | $(label "$GOMOD") |"
             echo "| go build | $(label "$BUILD") |"
@@ -251,8 +251,8 @@ jobs:
             echo "| govulncheck | $(label "$VULN") |"
             echo "| Tests | $(label "$TESTS") |"
             echo
-            echo "Einzelne Findings stehen als Annotations am Code sowie in den"
-            echo "Logs der jeweiligen Schritte. Rohdaten unter Artifacts."
+            echo "Individual findings appear as annotations on the code and in the"
+            echo "logs of the respective steps. Raw data under Artifacts."
           } >> "$GITHUB_STEP_SUMMARY"
 
           failed=""
@@ -263,8 +263,8 @@ jobs:
           done
 
           if [ -n "$failed" ]; then
-            echo "::error::QA fehlgeschlagen:${failed}"
+            echo "::error::QA failed:${failed}"
             exit 1
           fi
 
-          echo "Alle QA-Checks bestanden."
+          echo "All QA checks passed."

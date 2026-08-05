@@ -15,8 +15,8 @@ import (
 )
 
 type AmazonScraper struct {
-	// client ist im Normalbetrieb nil; Tests setzen hier einen Client mit
-	// eigenem Transport, um ohne Netzwerkzugriff zu antworten.
+	// client is nil in production; tests inject a client with its own
+	// transport to answer without network access.
 	client *http.Client
 }
 
@@ -79,8 +79,7 @@ func (s AmazonScraper) scraperName() string {
 	return "Amazon.de"
 }
 
-// httpClient liefert den injizierten Client oder den Produktionsclient
-// (mit Timeout ist immer Best Practice!).
+// httpClient returns the injected client or the production client with a 10s timeout.
 func (s AmazonScraper) httpClient() *http.Client {
 	if s.client != nil {
 		return s.client
@@ -92,20 +91,17 @@ func (s AmazonScraper) httpClient() *http.Client {
 }
 
 func (s AmazonScraper) fetchHTML(url string) (*http.Response, error) {
-	// 2. Request-Objekt anlegen
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Browser-Header setzen (User-Agent vortäuschen)
+	// Amazon serves a bot page to non-browser clients; de-DE keeps prices in
+	// the German format parsePrices expects (1.117,45).
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
-	// Optional: Weitere typische Browser-Header mitsenden
 	req.Header.Set("Accept-Language", "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
-	// 4. Request absenden
 	resp, err := s.httpClient().Do(req)
 	if err != nil {
 		return nil, err
