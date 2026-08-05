@@ -5,14 +5,10 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  # Wöchentlicher Lauf: die Vulnerability-DB hinter govulncheck ändert sich,
-  # ohne dass hier jemand committet. Fängt außerdem Brüche durch neue
-  # Go-Releases früh ab, statt erst beim nächsten PR.
   schedule:
     - cron: '17 6 * * 1'
   workflow_dispatch:
 
-# Ein veralteter Lauf pro Branch reicht — der zweite Push bricht den ersten ab.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -21,31 +17,22 @@ jobs:
   qa-and-test:
     name: Code Quality & Tests
     runs-on: ubuntu-latest
-    # Ohne dieses Limit greift der Default von 360 Minuten. Die Scraper-Tests
-    # sprechen echte Hosts an; ein hängender Request soll keinen Runner blockieren.
     timeout-minutes: 15
     permissions:
-      contents: read # Minimale Berechtigung für maximale Sicherheit
+      contents: read
 
     steps:
-      # 1. Repository auschecken
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # 2. Go-Umgebung aufsetzen & Caching aktivieren
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
           cache: true
 
-      # Ab hier laufen alle QA-Schritte per continue-on-error immer vollständig
-      # durch, damit ein früher Fehlschlag die späteren Checks nicht verdeckt.
-      # Rot wird der Job am Ende über den Schritt "QA Gate & Report".
-
-      # 3. Modul-Integrität und aufgeräumte go.mod/go.sum prüfen
       - name: Check Go Modules
         id: gomod
         continue-on-error: true
@@ -87,8 +74,6 @@ jobs:
 
           exit $failed
 
-      # 4. Kompilierbarkeit des gesamten Moduls prüfen
-      #    Tests allein bauen nur die Pakete, die auch Tests haben.
       - name: Build
         id: build
         continue-on-error: true
@@ -108,7 +93,6 @@ jobs:
 
           exit 1
 
-      # 5. Code-Formatierung prüfen (gofmt)
       - name: Check Formatting (gofmt)
         id: gofmt
         continue-on-error: true
@@ -139,7 +123,6 @@ jobs:
 
           exit 1
 
-      # 6. Statische Code-Analyse mit den Standard-Tools (go vet)
       - name: Run go vet
         id: vet
         continue-on-error: true
@@ -159,9 +142,6 @@ jobs:
 
           exit 1
 
-      # 7. Professionelles Linting (golangci-lint)
-      #    Linter-Auswahl steht in .golangci.yml, Findings erscheinen dank
-      #    problem-matchers als Annotations am Code.
       - name: Run golangci-lint
         id: golangci
         continue-on-error: true
@@ -170,9 +150,6 @@ jobs:
           version: v2.12.2
           problem-matchers: true
 
-      # 8. Sicherheitsprüfungen auf bekannte Lücken (govulncheck)
-      #    Version muss zur Go-Version aus go.mod passen: ältere govulncheck-
-      #    Releases ziehen ein golang.org/x/tools, das mit neuem Go nicht baut.
       - name: Run Security Scan (govulncheck)
         id: govulncheck
         continue-on-error: true
@@ -193,8 +170,6 @@ jobs:
 
           exit 1
 
-      # 9. Tests mit gotestsum ausführen
-      #    Version ebenfalls an die Go-Version gekoppelt (siehe govulncheck).
       - name: Run Tests with Race Detector & Coverage
         id: tests
         continue-on-error: true
@@ -202,16 +177,11 @@ jobs:
           go install gotest.tools/gotestsum@v1.13.0
           "$(go env GOPATH)/bin/gotestsum" --junitfile junit.xml -- -v -race -coverprofile=coverage.out ./...
 
-      # 10. Testergebnisse als hübsche Summary anzeigen
-      #     Nur wenn junit.xml wirklich existiert — sonst meldete dieser Schritt
-      #     ein ENOENT und damit einen Fehler, den es gar nicht gab.
       - name: Publish Test Summary
         if: always() && hashFiles('junit.xml') != ''
         uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5
         with:
-          paths: "junit.xml"
-
-      # 10b. Fehlenden Testreport explizit dokumentieren
+          paths: "junit.xml"      
       - name: Note Missing Test Report
         if: always() && hashFiles('junit.xml') == ''
         run: |
@@ -223,12 +193,10 @@ jobs:
             echo '"Run Tests with Race Detector & Coverage".'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # 11. Testabdeckung im Pipeline-Log anzeigen
       - name: Display Test Coverage
         if: always() && hashFiles('coverage.out') != ''
         run: go tool cover -func=coverage.out
 
-      # 12. Test-Coverage schön formatiert im Summary anzeigen
       - name: Add Coverage Summary
         if: always() && hashFiles('coverage.out') != ''
         run: |
@@ -239,8 +207,6 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # 13. Rohdaten als Artefakt sichern, damit ein roter Lauf lokal
-      #     analysierbar ist statt nur durchs Log scrollbar.
       - name: Upload Test & Coverage Artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -252,7 +218,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      # 14. Gesamtergebnis dokumentieren und Job entsprechend rot/grün setzen
       - name: QA Gate & Report
         if: always()
         env:
