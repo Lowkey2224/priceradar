@@ -1,4 +1,4 @@
-module dieser-loki/priceradar
+module github.com/Lowkey2224/priceradar
 
 go 1.26.5
 
