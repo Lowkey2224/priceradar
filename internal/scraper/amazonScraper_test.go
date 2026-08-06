@@ -48,6 +48,44 @@ func clientRejectingRequests(t *testing.T) *http.Client {
 	})}
 }
 
+type requestLog struct {
+	urls []string
+}
+
+// A bare injected client would replace CheckRedirect and test nothing.
+func clientKeepingRedirectPolicy(log *requestLog, respond func(req *http.Request) *http.Response) *http.Client {
+	client := AmazonScraper{}.httpClient()
+	client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		log.urls = append(log.urls, req.URL.String())
+		return respond(req), nil
+	})
+
+	return client
+}
+
+func redirectTo(req *http.Request, location string) *http.Response {
+	header := make(http.Header)
+	header.Set("Location", location)
+
+	return &http.Response{
+		StatusCode: http.StatusMovedPermanently,
+		Status:     "301 Moved Permanently",
+		Body:       io.NopCloser(strings.NewReader("")),
+		Header:     header,
+		Request:    req,
+	}
+}
+
+func responseOK(req *http.Request, body string) *http.Response {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(http.Header),
+		Request:    req,
+	}
+}
+
 func loadFixture(t *testing.T, name string) string {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join("testdata", name))
@@ -66,6 +104,16 @@ func TestSupports(t *testing.T) {
 		{
 			name:     "valid Amazon.de URL",
 			url:      "https://www.amazon.de/dp/B08N5WRWNW/",
+			expected: true,
+		},
+		{
+			name:     "uppercase scheme and host",
+			url:      "HTTPS://WWW.AMAZON.DE/dp/B08N5WRWNW/",
+			expected: true,
+		},
+		{
+			name:     "explicit default port",
+			url:      "https://www.amazon.de:443/dp/B08N5WRWNW/",
 			expected: true,
 		},
 		{
@@ -287,6 +335,61 @@ func TestFetchPrice(t *testing.T) {
 		}
 		if !strings.HasPrefix(seen.Get("Accept-Language"), "de-DE") {
 			t.Errorf("Accept-Language = %q; want de-DE first", seen.Get("Accept-Language"))
+		}
+	})
+}
+
+func TestRedirectPolicy(t *testing.T) {
+	const start = "https://www.amazon.de/dp/B0FMS9XQF7"
+	fixture := loadFixture(t, "amazon-dp-B0FMS9XQF7.html")
+
+	respondWithRedirect := func(location string) func(req *http.Request) *http.Response {
+		return func(req *http.Request) *http.Response {
+			if req.URL.String() == start {
+				return redirectTo(req, location)
+			}
+
+			return responseOK(req, fixture)
+		}
+	}
+
+	offSite := []struct {
+		name     string
+		location string
+	}{
+		{name: "foreign host", location: "https://attacker.example/dp/B0FMS9XQF7"},
+		{name: "http downgrade", location: "http://www.amazon.de/dp/B0FMS9XQF7"},
+		{name: "lookalike host", location: "https://www.amazon.de.attacker.example/dp/B0FMS9XQF7"},
+	}
+
+	for _, tt := range offSite {
+		t.Run(tt.name+" redirect is not followed", func(t *testing.T) {
+			var log requestLog
+			scraper := AmazonScraper{client: clientKeepingRedirectPolicy(&log, respondWithRedirect(tt.location))}
+
+			if _, err := scraper.fetchPrices(start); !errors.Is(err, ErrRedirectNotAllowed) {
+				t.Fatalf("fetchPrices() error = %v; want %v", err, ErrRedirectNotAllowed)
+			}
+			if len(log.urls) != 1 || log.urls[0] != start {
+				t.Errorf("transport saw %v; want only %q", log.urls, start)
+			}
+		})
+	}
+
+	t.Run("redirect within amazon.de is followed", func(t *testing.T) {
+		const canonical = "https://www.amazon.de/Some-Product-Name/dp/B0FMS9XQF7"
+		var log requestLog
+		scraper := AmazonScraper{client: clientKeepingRedirectPolicy(&log, respondWithRedirect(canonical))}
+
+		got, err := scraper.fetchPrices(start)
+		if err != nil {
+			t.Fatalf("fetchPrices() unexpected error: %v", err)
+		}
+		if got != 576.11 {
+			t.Errorf("fetchPrices() = %f; want %f", got, 576.11)
+		}
+		if len(log.urls) != 2 || log.urls[1] != canonical {
+			t.Errorf("transport saw %v; want %q then %q", log.urls, start, canonical)
 		}
 	})
 }

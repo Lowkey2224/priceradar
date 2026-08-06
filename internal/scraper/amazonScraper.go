@@ -20,8 +20,12 @@ type AmazonScraper struct {
 	client *http.Client
 }
 
+const amazonHost = "www.amazon.de"
+const maxRedirects = 5
+
 var amazonProductPath = regexp.MustCompile(`^/(?:[^/]+/)?dp/[A-Za-z0-9]{10}(?:/|$)`)
 var ErrPriceNotFound = errors.New("price not found")
+var ErrRedirectNotAllowed = errors.New("redirect leaves https://" + amazonHost)
 
 func (s AmazonScraper) scrape(url string) (float64, error) {
 	if !s.supports(url) {
@@ -70,9 +74,12 @@ func parsePrices(r io.Reader) (float64, error) {
 func (s AmazonScraper) supports(url string) bool {
 	parsed, err := urlpkg.Parse(url)
 	return err == nil &&
-		parsed.Scheme == "https" &&
-		strings.EqualFold(parsed.Hostname(), "www.amazon.de") &&
+		isAmazonHTTPS(parsed) &&
 		amazonProductPath.MatchString(parsed.EscapedPath())
+}
+
+func isAmazonHTTPS(u *urlpkg.URL) bool {
+	return u.Scheme == "https" && strings.ToLower(u.Hostname()) == amazonHost
 }
 
 func (s AmazonScraper) scraperName() string {
@@ -86,8 +93,21 @@ func (s AmazonScraper) httpClient() *http.Client {
 	}
 
 	return &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout:       10 * time.Second,
+		CheckRedirect: checkRedirect,
 	}
+}
+
+// supports() only sees the initial URL, so every hop needs the same check.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if !isAmazonHTTPS(req.URL) {
+		return fmt.Errorf("%w: %s", ErrRedirectNotAllowed, req.URL.Redacted())
+	}
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	}
+
+	return nil
 }
 
 func (s AmazonScraper) fetchHTML(url string) (*http.Response, error) {
@@ -96,8 +116,7 @@ func (s AmazonScraper) fetchHTML(url string) (*http.Response, error) {
 		return nil, err
 	}
 
-	// Amazon serves a bot page to non-browser clients; de-DE keeps prices in
-	// the German format parsePrices expects (1.117,45).
+	// de-DE keeps prices in the format parsePrices expects (1.117,45).
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Accept-Language", "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
