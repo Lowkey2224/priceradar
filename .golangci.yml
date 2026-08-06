@@ -1,0 +1,23 @@
+version: "2"
+
+linters:
+  # "standard" = errcheck, govet, ineffassign, staticcheck, unused.
+  # Matches the previous behavior without a config exactly, but now
+  # explicit and therefore reproducible across version changes.
+  default: standard
+
+  # Useful additions for this project — deliberately still off because they
+  # produce extra findings. Enable individually when needed:
+  #   bodyclose  - unclosed HTTP response bodies (relevant in the scraper)
+  #   errorlint  - wrong error comparisons instead of errors.Is/As
+  #   misspell   - typos in comments and strings
+  # enable:
+  #   - bodyclose
+  #   - errorlint
+  #   - misspell
+
+issues:
+  # By default golangci-lint shows only 50 findings per linter and 3 identical
+  # findings. The rest vanishes silently — exactly what the pipeline must not do.
+  max-issues-per-linter: 0
+  max-same-issues: 0

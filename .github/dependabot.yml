@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # Keeps the commit-SHA-pinned actions up to date. Stale pins were the cause
+  # of the pipeline outage (Go 1.26 vs. old golang.org/x/tools).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+      - github-actions
+
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps"
+    labels:
+      - dependencies
+      - go

@@ -1,0 +1,280 @@
+name: Go QA & Testing
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qa-and-test:
+    name: Code Quality & Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Check Go Modules
+        id: gomod
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          failed=0
+
+          if ! go mod verify 2>&1 | tee gomod-verify.log; then
+            {
+              echo "### ❌ go mod verify"
+              echo
+              echo '```'
+              cat gomod-verify.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            failed=1
+          fi
+
+          if ! go mod tidy 2>&1 | tee tidy.log; then
+            {
+              echo "### ❌ go mod tidy failed to run"
+              echo
+              echo '```'
+              cat tidy.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            failed=1
+          fi
+
+          if ! git diff --exit-code -- go.mod go.sum > tidy.diff 2>&1; then
+            echo "go.mod/go.sum are not tidy:"
+            cat tidy.diff
+            echo "::error file=go.mod::go mod tidy produces changes - run it locally and commit"
+            {
+              echo "### ❌ go mod tidy"
+              echo
+              echo "go.mod/go.sum are not tidy. Run \`go mod tidy\` locally and commit."
+              echo '```diff'
+              cat tidy.diff
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            failed=1
+          fi
+
+          # go mod tidy may have modified the files - restore the original
+          # state so the following steps check the committed state and not
+          # the corrected one.
+          git checkout -- go.mod go.sum
+
+          exit $failed
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if go build ./... 2>&1 | tee build.log; then
+            exit 0
+          fi
+
+          {
+            echo "### ❌ go build"
+            echo
+            echo '```'
+            cat build.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
+
+      - name: Check Formatting (gofmt)
+        id: gofmt
+        continue-on-error: true
+        run: |
+          if ! unformatted="$(find . -type f -name '*.go' -not -path './vendor/*' -exec gofmt -l {} +)"; then
+            echo "::error::gofmt could not inspect Go files"
+            exit 1
+          fi
+          if [ -z "$unformatted" ]; then
+            exit 0
+          fi
+
+          echo "The following files do not match the gofmt standard:"
+          echo "$unformatted"
+
+          while IFS= read -r file; do
+            echo "::error file=${file}::File is not gofmt-compliant (fix: gofmt -w ${file})"
+          done <<< "$unformatted"
+
+          {
+            echo "### ❌ gofmt"
+            echo
+            echo "The following files do not match the gofmt standard:"
+            echo '```'
+            echo "$unformatted"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
+
+      - name: Run go vet
+        id: vet
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if go vet ./... 2>&1 | tee vet.log; then
+            exit 0
+          fi
+
+          {
+            echo "### ❌ go vet"
+            echo
+            echo '```'
+            cat vet.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
+
+      - name: Run golangci-lint
+        id: golangci
+        continue-on-error: true
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          problem-matchers: true
+
+      - name: Run Security Scan (govulncheck)
+        id: govulncheck
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          if "$(go env GOPATH)/bin/govulncheck" ./... 2>&1 | tee govulncheck.log; then
+            exit 0
+          fi
+
+          {
+            echo "### ❌ govulncheck"
+            echo
+            echo '```'
+            cat govulncheck.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
+
+      - name: Run Tests with Race Detector & Coverage
+        id: tests
+        continue-on-error: true
+        run: |
+          go install gotest.tools/gotestsum@v1.13.0
+          "$(go env GOPATH)/bin/gotestsum" --junitfile junit.xml -- -v -race -coverprofile=coverage.out ./...
+
+      - name: Publish Test Summary
+        if: always() && hashFiles('junit.xml') != ''
+        uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5
+        with:
+          paths: "junit.xml"      
+      - name: Note Missing Test Report
+        if: always() && hashFiles('junit.xml') == ''
+        run: |
+          {
+            echo "### ⚠️ No test results"
+            echo
+            echo "The test run produced no \`junit.xml\` — the test command aborted"
+            echo 'before the first test. See the log of'
+            echo '"Run Tests with Race Detector & Coverage" for details.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Display Test Coverage
+        if: always() && hashFiles('coverage.out') != ''
+        run: go tool cover -func=coverage.out
+
+      - name: Add Coverage Summary
+        if: always() && hashFiles('coverage.out') != ''
+        run: |
+          {
+            echo "### 📊 Code Coverage Report"
+            echo '```'
+            go tool cover -func=coverage.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Test & Coverage Artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results
+          path: |
+            junit.xml
+            coverage.out
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: QA Gate & Report
+        if: always()
+        env:
+          GOMOD: ${{ steps.gomod.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          GOFMT: ${{ steps.gofmt.outcome }}
+          VET: ${{ steps.vet.outcome }}
+          LINT: ${{ steps.golangci.outcome }}
+          VULN: ${{ steps.govulncheck.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+        run: |
+          label() {
+            case "$1" in
+              success) echo "✅ ok" ;;
+              failure) echo "❌ failed" ;;
+              skipped) echo "⏭️ skipped" ;;
+              *)       echo "❔ $1" ;;
+            esac
+          }
+
+          {
+            echo "### 🧾 QA overview"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| go mod verify / tidy | $(label "$GOMOD") |"
+            echo "| go build | $(label "$BUILD") |"
+            echo "| gofmt | $(label "$GOFMT") |"
+            echo "| go vet | $(label "$VET") |"
+            echo "| golangci-lint | $(label "$LINT") |"
+            echo "| govulncheck | $(label "$VULN") |"
+            echo "| Tests | $(label "$TESTS") |"
+            echo
+            echo "Individual findings appear as annotations on the code and in the"
+            echo "logs of the respective steps. Raw data under Artifacts."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          failed=""
+          for check in GOMOD BUILD GOFMT VET LINT VULN TESTS; do
+            if [ "${!check}" = "failure" ]; then
+              failed="${failed} ${check}"
+            fi
+          done
+
+          if [ -n "$failed" ]; then
+            echo "::error::QA failed:${failed}"
+            exit 1
+          fi
+
+          echo "All QA checks passed."
