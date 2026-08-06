@@ -51,7 +51,17 @@ jobs:
             failed=1
           fi
 
-          go mod tidy
+          if ! go mod tidy 2>&1 | tee tidy.log; then
+            {
+              echo "### ❌ go mod tidy failed to run"
+              echo
+              echo '```'
+              cat tidy.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            failed=1
+          fi
+
           if ! git diff --exit-code -- go.mod go.sum > tidy.diff 2>&1; then
             echo "go.mod/go.sum are not tidy:"
             cat tidy.diff
