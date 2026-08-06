@@ -197,8 +197,7 @@ func TestHTTPClient(t *testing.T) {
 		got := AmazonScraper{}.httpClient()
 		if got == nil {
 			t.Fatal("httpClient() = nil; want client with timeout")
-		}
-		if got.Timeout != 10*time.Second {
+		} else if got.Timeout != 10*time.Second {
 			t.Errorf("Timeout = %v; want %v", got.Timeout, 10*time.Second)
 		}
 	})
