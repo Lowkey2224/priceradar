@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    
+    title VARCHAR(255) NOT NULL,
+    urls TEXT[] NOT NULL,
+    
+    target_price BIGINT NOT NULL,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

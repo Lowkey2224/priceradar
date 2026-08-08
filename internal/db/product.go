@@ -1,0 +1,100 @@
+package db
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+)
+
+const tableName = "products"
+const (
+	colID          = "id"
+	colTitle       = "title"
+	colUrls        = "urls"
+	colTargetPrice = "target_price"
+	colCreatedAt   = "created_at"
+	colUpdatedAt   = "updated_at"
+)
+
+const insertCols = colTitle + ", " + colUrls + ", " + colTargetPrice + ", " + colCreatedAt + ", " + colUpdatedAt
+const selectCols = colID + ", " + insertCols
+
+type Product struct {
+	ID          string
+	Title       string
+	Urls        StringArray
+	TargetPrice int64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (p *Product) Create(db *sql.DB) error {
+
+	query := `INSERT INTO ` + tableName + ` (` + insertCols + `) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at, updated_at`
+
+	err := db.QueryRowContext(
+		context.Background(),
+		query,
+		p.Title,
+		p.Urls,
+		p.TargetPrice,
+		time.Now().Add(time.Duration(-1)*time.Hour),
+		time.Now().Add(time.Duration(-1)*time.Hour),
+	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
+
+	return err
+}
+
+func (p *Product) Update(db *sql.DB) error {
+	p.UpdatedAt = time.Now()
+
+	query := `
+		UPDATE ` + tableName + ` 
+		SET ` +
+		colTitle + ` = $1, ` +
+		colUrls + ` = $2, ` +
+		colTargetPrice + ` = $3, ` +
+		colUpdatedAt + ` = $4 
+		WHERE ` + colID + ` = $5`
+
+	result, err := db.ExecContext(
+		context.Background(),
+		query,
+		p.Title,
+		p.Urls,
+		p.TargetPrice,
+		p.UpdatedAt,
+		p.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("Error executing update: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("Error fetching affectedRows: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func GetProduct(db *sql.DB, id string) (Product, error) {
+	var p Product
+
+	selectQuery := `SELECT ` + selectCols + ` FROM ` + tableName + ` WHERE id = $1`
+	err := db.QueryRowContext(context.Background(), selectQuery, id).Scan(
+		&p.ID,
+		&p.Title,
+		&p.Urls,
+		&p.TargetPrice,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+
+	return p, err
+}
