@@ -41,7 +41,7 @@ func TestProduct_CRUD(t *testing.T) {
 	}
 
 	if len(fetched.Urls) != 2 {
-		t.Errorf("GetProduct() Urls Anzahl = %d, want 2", len(fetched.Urls))
+		t.Fatalf("GetProduct() Urls Anzahl = %d, want 2", len(fetched.Urls))
 	}
 
 	if fetched.Urls[0] != newProduct.Urls[0] || fetched.Urls[1] != newProduct.Urls[1] {
