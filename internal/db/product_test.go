@@ -3,6 +3,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -82,4 +83,16 @@ func TestProduct_CRUD(t *testing.T) {
 	if len(updated.Urls) != 3 {
 		t.Errorf("Update() Urls werent updated. Got len: %d, want 3", len(updated.Urls))
 	}
+
+	err = updated.Delete(ctx, dbConn)
+
+	if err != nil {
+		t.Fatalf("Delete() failed with error %v", err)
+	}
+	_, err = GetProduct(ctx, dbConn, newProduct.ID)
+
+	if err != sql.ErrNoRows {
+		t.Fatalf("wrong error got %v expected %v", err, sql.ErrNoRows)
+	}
+
 }

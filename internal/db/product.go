@@ -46,6 +46,23 @@ func (p *Product) Create(ctx context.Context, db *sql.DB) error {
 	return err
 }
 
+func (p Product) Delete(ctx context.Context, db *sql.DB) error {
+	query := `DELETE FROM ` + tableName + ` where ` + colID + ` = $1`
+	result, err := db.ExecContext(ctx, query, p.ID)
+	if err != nil {
+		return fmt.Errorf("error executing delete: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("error fetching affectedRows: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (p *Product) Update(ctx context.Context, db *sql.DB) error {
 	updatedAt := time.Now()
 
