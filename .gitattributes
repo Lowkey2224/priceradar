@@ -1,0 +1,3 @@
+# The toolchain runs in a Linux container - CRLF would break Makefile recipes
+# and shell scripts when checked out on Windows.
+* text=auto eol=lf

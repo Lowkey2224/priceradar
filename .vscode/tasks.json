@@ -1,0 +1,157 @@
+{
+  "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}"
+  },
+  "tasks": [
+    {
+      "label": "QA: all checks",
+      "detail": "tidy, fmt, build, lint, vuln, test - like the CI pipeline",
+      "type": "shell",
+      "command": "docker compose --profile tools run --rm go make qa",
+      "linux": { "command": "make qa" },
+      "osx": { "command": "make qa" },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "owner": "go",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*?):(\\d+):(\\d+):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        }
+      }
+    },
+    {
+      "label": "Test",
+      "detail": "Race detector and coverage against db-test",
+      "type": "shell",
+      "command": "docker compose --profile tools run --rm go make test",
+      "linux": { "command": "make test" },
+      "osx": { "command": "make test" },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "owner": "go",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^\\s*(.*?):(\\d+):(\\d+):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        }
+      }
+    },
+    {
+      "label": "Build",
+      "type": "shell",
+      "command": "docker compose --profile tools run --rm --no-deps go make build",
+      "linux": { "command": "make build" },
+      "osx": { "command": "make build" },
+      "group": "build",
+      "problemMatcher": {
+        "owner": "go",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*?):(\\d+):(\\d+):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        }
+      }
+    },
+    {
+      "label": "Lint",
+      "detail": "golangci-lint",
+      "type": "shell",
+      "command": "docker compose --profile tools run --rm --no-deps go make lint",
+      "linux": { "command": "make lint" },
+      "osx": { "command": "make lint" },
+      "problemMatcher": {
+        "owner": "golangci-lint",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*?):(\\d+):(\\d+):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        }
+      }
+    },
+    {
+      "label": "Vulnerabilities",
+      "detail": "govulncheck",
+      "type": "shell",
+      "command": "docker compose --profile tools run --rm --no-deps go make vuln",
+      "linux": { "command": "make vuln" },
+      "osx": { "command": "make vuln" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Fix: gofmt",
+      "type": "shell",
+      "command": "docker compose --profile tools run --rm --no-deps go make fmt-fix",
+      "linux": { "command": "make fmt-fix" },
+      "osx": { "command": "make fmt-fix" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Fix: go mod tidy",
+      "type": "shell",
+      "command": "docker compose --profile tools run --rm --no-deps go make tidy-fix",
+      "linux": { "command": "make tidy-fix" },
+      "osx": { "command": "make tidy-fix" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run application",
+      "detail": "Against the dev database on port 5432",
+      "type": "shell",
+      "command": "docker compose --profile tools run --rm go make run",
+      "linux": { "command": "make run" },
+      "osx": { "command": "make run" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Shell in container",
+      "type": "shell",
+      "command": "docker compose --profile tools run --rm go bash",
+      "linux": { "command": "make shell" },
+      "osx": { "command": "make shell" },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      }
+    },
+    {
+      "label": "Docker: build toolchain image",
+      "type": "shell",
+      "command": "docker compose --profile tools build go",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: start dev database",
+      "type": "shell",
+      "command": "docker compose up -d db",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: stop everything",
+      "type": "shell",
+      "command": "docker compose --profile tools down",
+      "problemMatcher": []
+    }
+  ]
+}

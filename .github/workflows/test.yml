@@ -11,7 +11,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   qa-and-test:
@@ -20,6 +20,10 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+
+    env:
+      GOVULNCHECK_VERSION: v1.6.0
+      GOTESTSUM_VERSION: v1.13.0
 
     services:
         postgres:
@@ -43,13 +47,30 @@ jobs:
           persist-credentials: false
 
       - name: Set up Go
+        id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
           cache: true
 
+      # govulncheck and gotestsum have no prebuilt binaries in the workflow and
+      # would be compiled from source on every run.
+      - name: Restore Go Tools
+        id: tool-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/bin
+          key: go-tools-${{ runner.os }}-${{ runner.arch }}-go${{ steps.setup-go.outputs.go-version }}-vuln${{ env.GOVULNCHECK_VERSION }}-gotestsum${{ env.GOTESTSUM_VERSION }}
+
+      - name: Install Go Tools
+        if: steps.tool-cache.outputs.cache-hit != 'true'
+        run: |
+          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+          go install "gotest.tools/gotestsum@${GOTESTSUM_VERSION}"
+
       - name: Check Go Modules
         id: gomod
+        if: github.event_name != 'schedule'
         continue-on-error: true
         run: |
           set -o pipefail
@@ -66,20 +87,7 @@ jobs:
             failed=1
           fi
 
-          if ! go mod tidy 2>&1 | tee tidy.log; then
-            {
-              echo "### ❌ go mod tidy failed to run"
-              echo
-              echo '```'
-              cat tidy.log
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            failed=1
-          fi
-
-          if ! git diff --exit-code -- go.mod go.sum > tidy.diff 2>&1; then
-            echo "go.mod/go.sum are not tidy:"
-            cat tidy.diff
+          if ! go mod tidy -diff 2>&1 | tee tidy.diff; then
             echo "::error file=go.mod::go mod tidy produces changes - run it locally and commit"
             {
               echo "### ❌ go mod tidy"
@@ -92,15 +100,11 @@ jobs:
             failed=1
           fi
 
-          # go mod tidy may have modified the files - restore the original
-          # state so the following steps check the committed state and not
-          # the corrected one.
-          git checkout -- go.mod go.sum
-
           exit $failed
 
       - name: Build
         id: build
+        if: github.event_name != 'schedule'
         continue-on-error: true
         run: |
           set -o pipefail
@@ -120,18 +124,13 @@ jobs:
 
       - name: Check Formatting (gofmt)
         id: gofmt
+        if: github.event_name != 'schedule'
         continue-on-error: true
         run: |
-          if ! unformatted="$(find . -type f -name '*.go' -not -path './vendor/*' -exec gofmt -l {} +)"; then
-            echo "::error::gofmt could not inspect Go files"
-            exit 1
-          fi
+          unformatted="$(gofmt -l .)"
           if [ -z "$unformatted" ]; then
             exit 0
           fi
-
-          echo "The following files do not match the gofmt standard:"
-          echo "$unformatted"
 
           while IFS= read -r file; do
             echo "::error file=${file}::File is not gofmt-compliant (fix: gofmt -w ${file})"
@@ -148,27 +147,10 @@ jobs:
 
           exit 1
 
-      - name: Run go vet
-        id: vet
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          if go vet ./... 2>&1 | tee vet.log; then
-            exit 0
-          fi
-
-          {
-            echo "### ❌ go vet"
-            echo
-            echo '```'
-            cat vet.log
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          exit 1
-
+      # govet is part of the `standard` linter set - see .golangci.yml.
       - name: Run golangci-lint
         id: golangci
+        if: github.event_name != 'schedule'
         continue-on-error: true
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
@@ -179,18 +161,8 @@ jobs:
         id: govulncheck
         continue-on-error: true
         run: |
-          set +e
           set -o pipefail
-
-          STATUS=1
-          if go install golang.org/x/vuln/cmd/govulncheck@v1.6.0 2>&1 | tee -a govulncheck.log; then
-            "$(go env GOPATH)/bin/govulncheck" ./... 2>&1 | tee -a govulncheck.log
-            STATUS=$?
-          else
-            echo "Failed to install govulncheck" | tee -a govulncheck.log
-          fi
-
-          if [ $STATUS -eq 0 ]; then
+          if "$(go env GOPATH)/bin/govulncheck" ./... 2>&1 | tee govulncheck.log; then
             exit 0
           fi
 
@@ -206,20 +178,21 @@ jobs:
 
       - name: Run Tests with Race Detector & Coverage
         id: tests
+        if: github.event_name != 'schedule'
         continue-on-error: true
         env:
           TEST_DB_URL: "postgres://price-alert:price-alert@localhost:5432/price-alert?sslmode=disable"
         run: |
-          go install gotest.tools/gotestsum@v1.13.0
-          "$(go env GOPATH)/bin/gotestsum" --junitfile junit.xml -- -v -race -coverprofile=coverage.out ./...
+          "$(go env GOPATH)/bin/gotestsum" --junitfile junit.xml -- -v -race -shuffle=on -coverprofile=coverage.out ./...
 
       - name: Publish Test Summary
         if: always() && hashFiles('junit.xml') != ''
-        uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5
+        uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5 # v2.6
         with:
-          paths: "junit.xml"      
+          paths: "junit.xml"
+
       - name: Note Missing Test Report
-        if: always() && hashFiles('junit.xml') == ''
+        if: always() && github.event_name != 'schedule' && hashFiles('junit.xml') == ''
         run: |
           {
             echo "### ⚠️ No test results"
@@ -244,7 +217,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Test & Coverage Artifacts
-        if: always()
+        if: always() && github.event_name != 'schedule'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-results
@@ -260,7 +233,6 @@ jobs:
           GOMOD: ${{ steps.gomod.outcome }}
           BUILD: ${{ steps.build.outcome }}
           GOFMT: ${{ steps.gofmt.outcome }}
-          VET: ${{ steps.vet.outcome }}
           LINT: ${{ steps.golangci.outcome }}
           VULN: ${{ steps.govulncheck.outcome }}
           TESTS: ${{ steps.tests.outcome }}
@@ -282,8 +254,7 @@ jobs:
             echo "| go mod verify / tidy | $(label "$GOMOD") |"
             echo "| go build | $(label "$BUILD") |"
             echo "| gofmt | $(label "$GOFMT") |"
-            echo "| go vet | $(label "$VET") |"
-            echo "| golangci-lint | $(label "$LINT") |"
+            echo "| golangci-lint (incl. go vet) | $(label "$LINT") |"
             echo "| govulncheck | $(label "$VULN") |"
             echo "| Tests | $(label "$TESTS") |"
             echo
@@ -292,7 +263,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           failed=""
-          for check in GOMOD BUILD GOFMT VET LINT VULN TESTS; do
+          for check in GOMOD BUILD GOFMT LINT VULN TESTS; do
             if [ "${!check}" = "failure" ]; then
               failed="${failed} ${check}"
             fi
