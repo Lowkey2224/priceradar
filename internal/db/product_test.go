@@ -42,6 +42,10 @@ func TestProduct_CRUD(t *testing.T) {
 		t.Errorf("GetProduct() Title = %v, want %v", fetched.Title, newProduct.Title)
 	}
 
+	if fetched.TargetPrice != newProduct.TargetPrice {
+		t.Errorf("GetProduct() Title = %v, want %v", fetched.TargetPrice, newProduct.TargetPrice)
+	}
+
 	if len(fetched.Urls) != 2 {
 		t.Fatalf("GetProduct() Urls Anzahl = %d, want 2", len(fetched.Urls))
 	}
@@ -68,6 +72,10 @@ func TestProduct_CRUD(t *testing.T) {
 
 	if updated.Title != nameAfterChange {
 		t.Errorf("Update() new title wasnt saved. got: %s, want %s", updated.Title, nameAfterChange)
+	}
+
+	if updated.TargetPrice != 349 {
+		t.Errorf("Update() new title wasnt saved. got: %s, want 349", updated.TargetPrice)
 	}
 
 	if len(updated.Urls) != 3 {
