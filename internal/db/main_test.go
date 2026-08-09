@@ -55,7 +55,9 @@ func setupTest(t *testing.T) *sql.DB {
 	t.Helper()
 
 	t.Cleanup(func() {
-		_, _ = testDB.Exec("TRUNCATE TABLE products CASCADE")
+		if _, err := testDB.Exec("TRUNCATE TABLE products CASCADE"); err != nil {
+			t.Errorf("cleanup: truncate products: %v", err)
+		}
 	})
 
 	return testDB
