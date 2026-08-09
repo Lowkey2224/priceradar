@@ -17,8 +17,8 @@ const (
 	colUpdatedAt   = "updated_at"
 )
 
-const insertCols = colTitle + ", " + colUrls + ", " + colTargetPrice + ", " + colCreatedAt + ", " + colUpdatedAt
-const selectCols = colID + ", " + insertCols
+const insertCols = colTitle + ", " + colUrls + ", " + colTargetPrice
+const selectCols = colID + ", " + insertCols + ", " + colCreatedAt + ", " + colUpdatedAt
 
 type Product struct {
 	ID          string
@@ -31,7 +31,7 @@ type Product struct {
 
 func (p *Product) Create(db *sql.DB) error {
 
-	query := `INSERT INTO ` + tableName + ` (` + insertCols + `) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at, updated_at`
+	query := `INSERT INTO ` + tableName + ` (` + insertCols + `) VALUES ($1, $2, $3) RETURNING ` + colID + ", " + colCreatedAt + ", " + colUpdatedAt
 
 	err := db.QueryRowContext(
 		context.Background(),
@@ -39,8 +39,6 @@ func (p *Product) Create(db *sql.DB) error {
 		p.Title,
 		p.Urls,
 		p.TargetPrice,
-		time.Now(),
-		time.Now(),
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 
 	return err
