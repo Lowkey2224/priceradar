@@ -1,4 +1,4 @@
-package main
+opackage main
 
 import (
 	"context"
@@ -75,7 +75,7 @@ func main() {
 		log.Fatalf("error creating product: %v", err)
 	}
 
-	fmt.Printf("no product with ID: %s\n", product.ID)
+	fmt.Printf("product with ID: %s\n", product.ID)
 	fmt.Printf("%v\n", product)
 
 }
