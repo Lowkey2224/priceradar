@@ -52,7 +52,7 @@ func (a *StringArray) Scan(src any) error {
 		return nil
 	}
 
-	rawItems := strings.Split(strVal, "\",\"")
+	rawItems := strings.Split(strVal, ",")
 	items := make([]string, 0, len(rawItems))
 
 	for _, item := range rawItems {

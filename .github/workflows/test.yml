@@ -21,6 +21,22 @@ jobs:
     permissions:
       contents: read
 
+    services:
+        postgres:
+          image: postgres:16-alpine
+          env:
+            POSTGRES_USER: price-alert
+            POSTGRES_PASSWORD: price-alert
+            POSTGRES_DB: price-alert
+          ports:
+            - 5432:5432
+          # Setzt Healthchecks, damit der Runner wartet, bis Postgres bereit ist
+          options: >-
+            --health-cmd pg_isready
+            --health-interval 10s
+            --health-timeout 5s
+            --health-retries 5
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -183,6 +199,8 @@ jobs:
       - name: Run Tests with Race Detector & Coverage
         id: tests
         continue-on-error: true
+        env:
+          TEST_DB_URL: "postgres://price-alert:price-alert@localhost:5432/price-alert?sslmode=disable"
         run: |
           go install gotest.tools/gotestsum@v1.13.0
           "$(go env GOPATH)/bin/gotestsum" --junitfile junit.xml -- -v -race -coverprofile=coverage.out ./...
