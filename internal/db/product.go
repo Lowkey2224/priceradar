@@ -29,12 +29,12 @@ type Product struct {
 	UpdatedAt   time.Time
 }
 
-func (p *Product) Create(db *sql.DB) error {
+func (p *Product) Create(ctx context.Context, db *sql.DB) error {
 
 	query := `INSERT INTO ` + tableName + ` (` + insertCols + `) VALUES ($1, $2, $3) RETURNING ` + colID + ", " + colCreatedAt + ", " + colUpdatedAt
 
 	err := db.QueryRowContext(
-		context.Background(),
+		ctx,
 		query,
 		p.Title,
 		p.Urls,
@@ -44,8 +44,8 @@ func (p *Product) Create(db *sql.DB) error {
 	return err
 }
 
-func (p *Product) Update(db *sql.DB) error {
-	p.UpdatedAt = time.Now()
+func (p *Product) Update(ctx context.Context, db *sql.DB) error {
+	updatedAt := time.Now()
 
 	query := `
 		UPDATE ` + tableName + ` 
@@ -57,35 +57,36 @@ func (p *Product) Update(db *sql.DB) error {
 		WHERE ` + colID + ` = $5`
 
 	result, err := db.ExecContext(
-		context.Background(),
+		ctx,
 		query,
 		p.Title,
 		p.Urls,
 		p.TargetPrice,
-		p.UpdatedAt,
+		updatedAt,
 		p.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("Error executing update: %w", err)
+		return fmt.Errorf("error executing update: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("Error fetching affectedRows: %w", err)
+		return fmt.Errorf("error fetching affectedRows: %w", err)
 	}
 
 	if rowsAffected == 0 {
 		return sql.ErrNoRows
 	}
 
+	p.UpdatedAt = updatedAt
 	return nil
 }
 
-func GetProduct(db *sql.DB, id string) (Product, error) {
+func GetProduct(ctx context.Context, db *sql.DB, id string) (Product, error) {
 	var p Product
 
 	selectQuery := `SELECT ` + selectCols + ` FROM ` + tableName + ` WHERE id = $1`
-	err := db.QueryRowContext(context.Background(), selectQuery, id).Scan(
+	err := db.QueryRowContext(ctx, selectQuery, id).Scan(
 		&p.ID,
 		&p.Title,
 		&p.Urls,

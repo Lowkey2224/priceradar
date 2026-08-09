@@ -2,6 +2,7 @@
 package db
 
 import (
+	"context"
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -10,6 +11,7 @@ import (
 const nameAfterChange = "New Bar Name"
 
 func TestProduct_CRUD(t *testing.T) {
+	ctx := context.Background()
 	dbConn := setupTest(t)
 
 	newProduct := Product{
@@ -21,7 +23,7 @@ func TestProduct_CRUD(t *testing.T) {
 		TargetPrice: 299,
 	}
 
-	err := newProduct.Create(dbConn)
+	err := newProduct.Create(ctx, dbConn)
 	if err != nil {
 		t.Fatalf("Create() failed: %v", err)
 	}
@@ -31,7 +33,7 @@ func TestProduct_CRUD(t *testing.T) {
 	}
 
 	// --- 2. TEST: GetProduct ---
-	fetched, err := GetProduct(dbConn, newProduct.ID)
+	fetched, err := GetProduct(ctx, dbConn, newProduct.ID)
 	if err != nil {
 		t.Fatalf("GetProduct() failed: %v", err)
 	}
@@ -53,13 +55,13 @@ func TestProduct_CRUD(t *testing.T) {
 	fetched.Urls = append(fetched.Urls, "https://shop-c.com/riegel")
 	fetched.TargetPrice = 349
 
-	err = fetched.Update(dbConn)
+	err = fetched.Update(ctx, dbConn)
 	if err != nil {
 		t.Fatalf("Update() failed: %v", err)
 	}
 
 	// --- 4. TEST: Verify Update
-	updated, err := GetProduct(dbConn, newProduct.ID)
+	updated, err := GetProduct(ctx, dbConn, newProduct.ID)
 	if err != nil {
 		t.Fatalf("GetProduct() failed after update: %v", err)
 	}

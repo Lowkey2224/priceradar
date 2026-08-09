@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -68,8 +69,9 @@ func main() {
 		Urls:        db.StringArray{"https://example.com", "https://amazon.de"},
 		TargetPrice: 145,
 	}
+	ctx := context.Background()
 
-	err = product.Create(dbConn)
+	err = product.Create(ctx, dbConn)
 	fmt.Printf("Neuer Eintrag mit ID: %s\n", product.ID)
 	fmt.Printf("%v\n", product)
 
