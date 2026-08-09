@@ -30,7 +30,6 @@ jobs:
             POSTGRES_DB: price-alert
           ports:
             - 5432:5432
-          # Setzt Healthchecks, damit der Runner wartet, bis Postgres bereit ist
           options: >-
             --health-cmd pg_isready
             --health-interval 10s
