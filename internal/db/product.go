@@ -39,8 +39,8 @@ func (p *Product) Create(db *sql.DB) error {
 		p.Title,
 		p.Urls,
 		p.TargetPrice,
-		time.Now().Add(time.Duration(-1)*time.Hour),
-		time.Now().Add(time.Duration(-1)*time.Hour),
+		time.Now(),
+		time.Now(),
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 
 	return err
