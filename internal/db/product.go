@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 const tableName = "products"
@@ -23,7 +25,7 @@ const selectCols = colID + ", " + insertCols + ", " + colCreatedAt + ", " + colU
 type Product struct {
 	ID          string
 	Title       string
-	Urls        StringArray
+	Urls        pq.StringArray
 	TargetPrice int64
 	CreatedAt   time.Time
 	UpdatedAt   time.Time

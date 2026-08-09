@@ -1,4 +1,4 @@
-opackage main
+package main
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/jackc/pgx/v5/stdlib" // Registriert den pgx-Treiber für database/sql
 	"github.com/joho/godotenv"
+	"github.com/lib/pq"
 )
 
 func runMigrations(db *sql.DB) error {
@@ -66,7 +67,7 @@ func main() {
 	}
 	product := db.Product{
 		Title:       "Energieriegel",
-		Urls:        db.StringArray{"https://example.com", "https://amazon.de"},
+		Urls:        pq.StringArray{"https://example.com", "https://amazon.de"},
 		TargetPrice: 145,
 	}
 	ctx := context.Background()

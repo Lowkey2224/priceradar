@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/lib/pq"
 )
 
 const nameAfterChange = "New Bar Name"
@@ -16,7 +17,7 @@ func TestProduct_CRUD(t *testing.T) {
 
 	newProduct := Product{
 		Title: "Test Riegel",
-		Urls: StringArray{
+		Urls: pq.StringArray{
 			"https://shop-a.com/riegel",
 			"https://shop-b.com/riegel",
 		},
@@ -75,7 +76,7 @@ func TestProduct_CRUD(t *testing.T) {
 	}
 
 	if updated.TargetPrice != 349 {
-		t.Errorf("Update() new title wasnt saved. got: %s, want 349", updated.TargetPrice)
+		t.Errorf("Update() new title wasnt saved. got: %d, want 349", updated.TargetPrice)
 	}
 
 	if len(updated.Urls) != 3 {
