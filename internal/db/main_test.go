@@ -44,7 +44,9 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	testDB.Close()
+	if err := testDB.Close(); err != nil {
+		panic("Failed to close test database: " + err.Error())
+	}
 
 	os.Exit(code)
 }

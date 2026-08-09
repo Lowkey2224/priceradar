@@ -54,7 +54,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer dbConn.Close()
+	defer func() {
+		if err := dbConn.Close(); err != nil {
+			log.Printf("failed to close database connection: %v", err)
+		}
+	}()
 
 	if err := runMigrations(dbConn); err != nil {
 		log.Fatalf("Migration Error: %v", err)
