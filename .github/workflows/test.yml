@@ -21,6 +21,21 @@ jobs:
     permissions:
       contents: read
 
+    services:
+        postgres:
+          image: postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+          env:
+            POSTGRES_USER: price-alert
+            POSTGRES_PASSWORD: price-alert
+            POSTGRES_DB: price-alert
+          ports:
+            - 5432:5432
+          options: >-
+            --health-cmd pg_isready
+            --health-interval 10s
+            --health-timeout 5s
+            --health-retries 5
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -164,9 +179,18 @@ jobs:
         id: govulncheck
         continue-on-error: true
         run: |
+          set +e
           set -o pipefail
-          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
-          if "$(go env GOPATH)/bin/govulncheck" ./... 2>&1 | tee govulncheck.log; then
+
+          STATUS=1
+          if go install golang.org/x/vuln/cmd/govulncheck@v1.6.0 2>&1 | tee -a govulncheck.log; then
+            "$(go env GOPATH)/bin/govulncheck" ./... 2>&1 | tee -a govulncheck.log
+            STATUS=$?
+          else
+            echo "Failed to install govulncheck" | tee -a govulncheck.log
+          fi
+
+          if [ $STATUS -eq 0 ]; then
             exit 0
           fi
 
@@ -183,6 +207,8 @@ jobs:
       - name: Run Tests with Race Detector & Coverage
         id: tests
         continue-on-error: true
+        env:
+          TEST_DB_URL: "postgres://price-alert:price-alert@localhost:5432/price-alert?sslmode=disable"
         run: |
           go install gotest.tools/gotestsum@v1.13.0
           "$(go env GOPATH)/bin/gotestsum" --junitfile junit.xml -- -v -race -coverprofile=coverage.out ./...
