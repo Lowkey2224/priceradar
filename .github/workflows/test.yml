@@ -23,7 +23,7 @@ jobs:
 
     services:
         postgres:
-          image: postgres:16-alpine
+          image: postgres:18.4-alpine@sha256:b6a26b9672dcce87fdcc185b902650129c90a6c4
           env:
             POSTGRES_USER: price-alert
             POSTGRES_PASSWORD: price-alert
