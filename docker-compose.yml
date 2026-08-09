@@ -15,3 +15,55 @@ services:
       POSTGRES_PASSWORD: price-alert
       POSTGRES_USER: price-alert
       POSTGRES_DB: price-alert
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U price-alert -d price-alert"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  # Separate database for `make test` - the tests TRUNCATE their tables.
+  # tmpfs, so the data disappears with the container.
+  db-test:
+    image: postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+    profiles: [tools]
+    shm_size: 128mb
+    ports:
+     - 127.0.0.1:5433:5432
+    environment:
+      POSTGRES_PASSWORD: price-alert
+      POSTGRES_USER: price-alert
+      POSTGRES_DB: price-alert
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U price-alert -d price-alert"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  # Go toolchain including golangci-lint, govulncheck and gotestsum.
+  # Not started by `docker compose up` - driven through the Makefile.
+  go:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    profiles: [tools]
+    user: "${DOCKER_UID:-0}:${DOCKER_GID:-0}"
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/gocache
+    environment:
+      DATABASE_URL: "postgres://price-alert:price-alert@db:5432/price-alert?sslmode=disable"
+      TEST_DB_URL: "postgres://price-alert:price-alert@db-test:5432/price-alert?sslmode=disable"
+    depends_on:
+      db:
+        condition: service_healthy
+      db-test:
+        condition: service_healthy
+
+volumes:
+  go-mod-cache:
+  go-build-cache:

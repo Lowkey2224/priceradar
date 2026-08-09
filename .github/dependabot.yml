@@ -13,6 +13,18 @@ updates:
       - dependencies
       - github-actions
 
+  # Covers Dockerfile.dev and the images in docker-compose.yml.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+      - docker
+
   - package-ecosystem: gomod
     directory: "/"
     schedule:

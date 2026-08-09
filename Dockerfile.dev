@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:1.26.5-trixie@sha256:87ffdb09b6a2e29ff910748b745395e8a0299aa80b7c0551cdca9b55e3fd2b3e
+
+# Keep in sync with .github/workflows/test.yml and .golangci.yml.
+ARG GOLANGCI_LINT_VERSION=v2.12.2
+ARG GOVULNCHECK_VERSION=v1.6.0
+ARG GOTESTSUM_VERSION=v1.13.0
+
+ENV GOPATH=/go \
+    GOMODCACHE=/go/pkg/mod \
+    GOCACHE=/gocache \
+    GOLANGCI_LINT_CACHE=/gocache/golangci-lint \
+    HOME=/tmp \
+    IN_CONTAINER=1
+
+RUN go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" \
+    && go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" \
+    && go install "gotest.tools/gotestsum@${GOTESTSUM_VERSION}"
+
+# The container runs as the host UID so build artifacts are not root-owned.
+# Named volumes inherit these permissions from the image on first mount.
+RUN mkdir -p /go/pkg/mod /gocache \
+    && chmod -R 0777 /go /gocache \
+    && git config --system --add safe.directory /app
+
+WORKDIR /app
