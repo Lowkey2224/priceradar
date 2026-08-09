@@ -45,7 +45,7 @@ func TestProduct_CRUD(t *testing.T) {
 	}
 
 	if fetched.TargetPrice != newProduct.TargetPrice {
-		t.Errorf("GetProduct() Title = %v, want %v", fetched.TargetPrice, newProduct.TargetPrice)
+		t.Errorf("GetProduct() TargetPrice = %v, want %v", fetched.TargetPrice, newProduct.TargetPrice)
 	}
 
 	if len(fetched.Urls) != 2 {
@@ -77,11 +77,17 @@ func TestProduct_CRUD(t *testing.T) {
 	}
 
 	if updated.TargetPrice != 349 {
-		t.Errorf("Update() new title wasnt saved. got: %d, want 349", updated.TargetPrice)
+		t.Errorf("Update() new targetPrice wasnt saved. got: %d, want 349", updated.TargetPrice)
 	}
 
 	if len(updated.Urls) != 3 {
-		t.Errorf("Update() Urls werent updated. Got len: %d, want 3", len(updated.Urls))
+		t.Fatalf("Update() Urls werent updated. Got len: %d, want 3", len(updated.Urls))
+	}
+
+	if updated.Urls[0] != newProduct.Urls[0] ||
+		updated.Urls[1] != newProduct.Urls[1] ||
+		updated.Urls[2] != "https://shop-c.com/riegel" {
+		t.Errorf("Update() URLs were not persisted: got %v", updated.Urls)
 	}
 
 	err = updated.Delete(ctx, dbConn)
