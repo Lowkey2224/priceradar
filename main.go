@@ -62,7 +62,7 @@ func main() {
 	}()
 
 	if err := runMigrations(dbConn); err != nil {
-		log.Fatalf("Migration Error: %v", err)
+		log.Fatalf("migration Error: %v", err)
 	}
 	product := db.Product{
 		Title:       "Energieriegel",
@@ -71,8 +71,11 @@ func main() {
 	}
 	ctx := context.Background()
 
-	err = product.Create(ctx, dbConn)
-	fmt.Printf("Neuer Eintrag mit ID: %s\n", product.ID)
+	if err = product.Create(ctx, dbConn); err != nil {
+		log.Fatalf("error creating product: %v", err)
+	}
+
+	fmt.Printf("no product with ID: %s\n", product.ID)
 	fmt.Printf("%v\n", product)
 
 }
