@@ -26,7 +26,7 @@ type Product struct {
 	ID          string
 	Title       string
 	Urls        pq.StringArray
-	TargetPrice int64
+	TargetPrice uint64
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

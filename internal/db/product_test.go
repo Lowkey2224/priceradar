@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/Lowkey2224/priceradar/internal/testhelpers"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/lib/pq"
 )
@@ -14,7 +15,7 @@ const nameAfterChange = "New Bar Name"
 
 func TestProduct_CRUD(t *testing.T) {
 	ctx := context.Background()
-	dbConn := setupTest(t)
+	dbConn := testhelpers.SetupTestDB(t)
 
 	newProduct := Product{
 		Title: "Test Riegel",
